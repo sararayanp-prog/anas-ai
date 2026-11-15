@@ -42,12 +42,16 @@ def init_db():
             active_symbol VARCHAR(20) DEFAULT 'NIFTY',
             dhan_token TEXT DEFAULT '',
             last_brief_date VARCHAR(20) DEFAULT '',
+            vapid_public TEXT DEFAULT '',
+            vapid_private TEXT DEFAULT '',
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
     cur.execute("ALTER TABLE system_config ADD COLUMN IF NOT EXISTS active_symbol VARCHAR(20) DEFAULT 'NIFTY'")
     cur.execute("ALTER TABLE system_config ADD COLUMN IF NOT EXISTS dhan_token TEXT DEFAULT ''")
     cur.execute("ALTER TABLE system_config ADD COLUMN IF NOT EXISTS last_brief_date VARCHAR(20) DEFAULT ''")
+    cur.execute("ALTER TABLE system_config ADD COLUMN IF NOT EXISTS vapid_public TEXT DEFAULT ''")
+    cur.execute("ALTER TABLE system_config ADD COLUMN IF NOT EXISTS vapid_private TEXT DEFAULT ''")
     cur.execute("INSERT INTO system_config (id) VALUES (1) ON CONFLICT (id) DO NOTHING")
     cur.execute("""
         CREATE TABLE IF NOT EXISTS trades_journal (
@@ -69,6 +73,55 @@ def init_db():
             closed_at TIMESTAMP
         )
     """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS push_subscriptions (
+            id SERIAL PRIMARY KEY,
+            endpoint TEXT UNIQUE NOT NULL,
+            sub_json TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+def get_vapid_keys():
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT vapid_public, vapid_private FROM system_config WHERE id = 1")
+    row = cur.fetchone()
+    conn.close()
+    return (row[0] or "", row[1] or "")
+
+def save_vapid_keys(pub: str, priv: str):
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("UPDATE system_config SET vapid_public = %s, vapid_private = %s WHERE id = 1", (pub, priv))
+    conn.commit()
+    conn.close()
+
+def save_push_sub(endpoint: str, sub_json: str):
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO push_subscriptions (endpoint, sub_json)
+        VALUES (%s, %s)
+        ON CONFLICT (endpoint) DO UPDATE SET sub_json = EXCLUDED.sub_json
+    """, (endpoint, sub_json))
+    conn.commit()
+    conn.close()
+
+def get_all_push_subs():
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT endpoint, sub_json FROM push_subscriptions")
+    rows = cur.fetchall()
+    conn.close()
+    return rows
+
+def delete_push_sub(endpoint: str):
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM push_subscriptions WHERE endpoint = %s", (endpoint,))
     conn.commit()
     conn.close()
 

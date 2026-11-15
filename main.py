@@ -1,4 +1,5 @@
 import os
+import json
 import time
 import zlib
 import struct
@@ -9,6 +10,7 @@ from dotenv import load_dotenv
 from flask import Flask, redirect, request, jsonify, Response
 import db
 import dhan_bridge
+import push_service
 from structure_engine import analyze_market_structure, ist_now
 from telegram_alert import send_telegram
 from ai_analyst import generate_premarket_brief
@@ -25,6 +27,10 @@ runtime_status = {
 sim_candles = []
 _engine_started = False
 _engine_lock = threading.Lock()
+
+def broadcast_alert(title: str, body: str, tg_html: str):
+    send_telegram(tg_html)
+    push_service.send_web_push(title, body)
 
 def make_png_icon(size: int):
     rows = []
@@ -91,7 +97,11 @@ def anas_trading_loop():
             if now_ist.weekday() < 5 and dt_time(8, 55) <= now_ist.time() <= dt_time(9, 10):
                 if state["last_brief_date"] != today_str:
                     brief = generate_premarket_brief()
-                    send_telegram(f"🌅 <b>ANAS AI MORNING BRIEF ({today_str})</b>\n\n{brief[:3500]}")
+                    broadcast_alert(
+                        "🌅 ANAS AI Morning Brief",
+                        brief[:180],
+                        f"🌅 <b>ANAS AI MORNING BRIEF ({today_str})</b>\n\n{brief[:3500]}"
+                    )
                     db.update_setting("last_brief_date", today_str)
 
             today_pnl = db.get_today_pnl()
@@ -99,7 +109,11 @@ def anas_trading_loop():
 
             if not state["kill_switch"] and today_pnl <= max_loss_amt:
                 db.update_setting("kill_switch", True)
-                send_telegram(f"🚨 <b>KILL SWITCH TRIGGERED!</b>\nDaily Max Loss ({today_pnl}) hit.")
+                broadcast_alert(
+                    "🚨 KILL SWITCH TRIGGERED!",
+                    f"Daily Max Loss ({today_pnl}) hit. Trading locked.",
+                    f"🚨 <b>KILL SWITCH TRIGGERED!</b>\nDaily Max Loss ({today_pnl}) hit."
+                )
 
             if state["kill_switch"]:
                 runtime_status["last_msg"] = "KILL SWITCH ACTIVE"
@@ -126,14 +140,26 @@ def anas_trading_loop():
 
                     if curr_opt >= entry + risk and trail_sl < entry:
                         db.update_trailing_sl(tid, entry)
-                        send_telegram(f"🛡️ <b>SL TRAILED TO COST</b>\n{tsym} | New SL: ₹{entry}")
+                        broadcast_alert(
+                            f"🛡️ SL Trailed: {tsym}",
+                            f"New SL at Cost: ₹{entry}",
+                            f"🛡️ <b>SL TRAILED TO COST</b>\n{tsym} | New SL: ₹{entry}"
+                        )
 
                     if curr_opt <= trail_sl:
                         net = db.close_virtual_trade(tid, curr_opt, (curr_opt - entry) * qty)
-                        send_telegram(f"🔴 <b>SL HIT EXIT</b>\n{tsym} @ ₹{curr_opt}\nNet P&L: ₹{net}")
+                        broadcast_alert(
+                            f"🔴 SL Hit: {tsym}",
+                            f"Exit ₹{curr_opt} | Net P&L: ₹{net}",
+                            f"🔴 <b>SL HIT EXIT</b>\n{tsym} @ ₹{curr_opt}\nNet P&L: ₹{net}"
+                        )
                     elif curr_opt >= target:
                         net = db.close_virtual_trade(tid, curr_opt, (curr_opt - entry) * qty)
-                        send_telegram(f"💰 <b>TARGET ACHIEVED!</b>\n{tsym} @ ₹{curr_opt}\nNet P&L: ₹{net}")
+                        broadcast_alert(
+                            f"💰 Target Hit: {tsym}",
+                            f"Exit ₹{curr_opt} | Net P&L: ₹{net}",
+                            f"💰 <b>TARGET ACHIEVED!</b>\n{tsym} @ ₹{curr_opt}\nNet P&L: ₹{net}"
+                        )
 
                 if len(open_trades) == 0:
                     pdh = max(c["high"] for c in sim_candles[:-1]) - 5
@@ -149,7 +175,11 @@ def anas_trading_loop():
                         strike = int(round(new_c["close"] / 50.0) * 50)
                         opt_sym = f"{sym} {strike} {'CE' if side == 'BUY_CE' else 'PE'}"
                         db.open_virtual_trade(opt_sym, sym, side, res["reason"], opt_entry, opt_sl, opt_target, 75, False)
-                        send_telegram(f"🟢 <b>ANAS AI SIGNAL (SIM)</b>\n<b>{opt_sym}</b>\nEntry: ₹{opt_entry} | SL: ₹{opt_sl} | Target: ₹{opt_target}\nSetup: {res['reason']}")
+                        broadcast_alert(
+                            f"🟢 SIGNAL: {opt_sym}",
+                            f"Entry ₹{opt_entry} | SL ₹{opt_sl} | Target ₹{opt_target}",
+                            f"🟢 <b>ANAS AI SIGNAL (SIM)</b>\n<b>{opt_sym}</b>\nEntry: ₹{opt_entry} | SL: ₹{opt_sl} | Target: ₹{opt_target}\nSetup: {res['reason']}"
+                        )
 
             elif mode == "PAPER_DHAN":
                 if not dhan_bridge.is_dhan_configured():
@@ -198,14 +228,26 @@ def anas_trading_loop():
                     risk = abs(entry - float(sl))
                     if curr_opt >= entry + risk and trail_sl < entry:
                         db.update_trailing_sl(tid, entry)
-                        send_telegram(f"🛡️ <b>SL TRAILED TO COST</b>\n{tsym} | New SL: ₹{entry}")
+                        broadcast_alert(
+                            f"🛡️ SL Trailed: {tsym}",
+                            f"New SL at Cost: ₹{entry}",
+                            f"🛡️ <b>SL TRAILED TO COST</b>\n{tsym} | New SL: ₹{entry}"
+                        )
 
                     if curr_opt <= trail_sl:
                         net = db.close_virtual_trade(tid, curr_opt, (curr_opt - entry) * qty)
-                        send_telegram(f"🔴 <b>SL HIT EXIT (DHAN)</b>\n{tsym} @ ₹{curr_opt}\nNet P&L: ₹{net}")
+                        broadcast_alert(
+                            f"🔴 SL Hit: {tsym}",
+                            f"Exit ₹{curr_opt} | Net P&L: ₹{net}",
+                            f"🔴 <b>SL HIT EXIT (DHAN)</b>\n{tsym} @ ₹{curr_opt}\nNet P&L: ₹{net}"
+                        )
                     elif curr_opt >= target:
                         net = db.close_virtual_trade(tid, curr_opt, (curr_opt - entry) * qty)
-                        send_telegram(f"💰 <b>TARGET HIT (DHAN)</b>\n{tsym} @ ₹{curr_opt}\nNet P&L: ₹{net}")
+                        broadcast_alert(
+                            f"💰 Target Hit: {tsym}",
+                            f"Exit ₹{curr_opt} | Net P&L: ₹{net}",
+                            f"💰 <b>TARGET HIT (DHAN)</b>\n{tsym} @ ₹{curr_opt}\nNet P&L: ₹{net}"
+                        )
 
                 if len(open_trades) == 0:
                     res = analyze_market_structure(candles, pdh=pdh, pdl=pdl, is_expiry=is_exp)
@@ -222,10 +264,10 @@ def anas_trading_loop():
                             opt_target = round(opt_entry * 1.30, 2)
                             opt_sym = f"{sym} {strike} {'CE' if side == 'BUY_CE' else 'PE'}"
                             db.open_virtual_trade(opt_sym, sym, side, f"{res['reason']} | PCR:{pcr}", opt_entry, opt_sl, opt_target, lot, is_exp)
-                            send_telegram(
-                                f"🟢 <b>ANAS AI LIVE SIGNAL</b>\n<b>{opt_sym}</b> {'⚠️ EXPIRY' if is_exp else ''}\n"
-                                f"Entry: ₹{opt_entry} | SL: ₹{opt_sl} | Target: ₹{opt_target}\n"
-                                f"PCR: {pcr} | Setup: {res['reason']}"
+                            broadcast_alert(
+                                f"🟢 LIVE SIGNAL: {opt_sym}",
+                                f"Entry ₹{opt_entry} | SL ₹{opt_sl} | Target ₹{opt_target} | PCR {pcr}",
+                                f"🟢 <b>ANAS AI LIVE SIGNAL</b>\n<b>{opt_sym}</b> {'⚠️ EXPIRY' if is_exp else ''}\nEntry: ₹{opt_entry} | SL: ₹{opt_sl} | Target: ₹{opt_target}\nPCR: {pcr} | Setup: {res['reason']}"
                             )
                 time.sleep(5)
                 continue
@@ -240,6 +282,7 @@ def start_engine_once():
     with _engine_lock:
         if not _engine_started:
             db.init_db()
+            push_service.ensure_vapid_keys()
             t = threading.Thread(target=anas_trading_loop, daemon=True)
             t.start()
             _engine_started = True
@@ -264,7 +307,27 @@ def manifest():
 
 @app.route("/sw.js")
 def sw():
-    js = "self.addEventListener('install', e => self.skipWaiting()); self.addEventListener('fetch', e => {});"
+    js = """
+self.addEventListener('install', e => self.skipWaiting());
+self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
+self.addEventListener('push', event => {
+  let data = { title: 'ANAS AI Alert', body: 'New market update!' };
+  try { data = event.data.json(); } catch (e) {}
+  event.waitUntil(
+    self.registration.showNotification(data.title, {
+      body: data.body,
+      icon: '/icon-192.png',
+      badge: '/icon-192.png',
+      vibrate: [250, 100, 250],
+      requireInteraction: true
+    })
+  );
+});
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  event.waitUntil(clients.openWindow('/'));
+});
+"""
     return Response(js, mimetype="application/javascript")
 
 @app.route("/icon-192.png")
@@ -275,6 +338,20 @@ def icon192():
 def icon512():
     return Response(ICON_512, mimetype="image/png")
 
+@app.route("/api/vapid-public")
+def api_vapid_public():
+    pub, _ = push_service.ensure_vapid_keys()
+    return jsonify({"publicKey": pub})
+
+@app.route("/api/push-subscribe", methods=["POST"])
+def api_push_subscribe():
+    sub = request.get_json(force=True)
+    endpoint = sub.get("endpoint")
+    if not endpoint:
+        return jsonify({"ok": False, "error": "Invalid subscription"}), 400
+    db.save_push_sub(endpoint, json.dumps(sub))
+    return jsonify({"ok": True})
+
 @app.route("/api/state")
 def api_state():
     state = db.get_system_state()
@@ -284,7 +361,7 @@ def api_state():
     t_list = []
     for t in trades:
         t_list.append({
-            "symbol": t[1], "side": t[2], "setup": t[3],
+            "id": t[0], "symbol": t[1], "side": t[2], "setup": t[3],
             "entry": float(t[4]), "trail_sl": float(t[5]),
             "target": float(t[6]), "exit": float(t[7]) if t[7] is not None else None,
             "pnl": float(t[8] or 0), "status": t[9]
@@ -343,12 +420,15 @@ def dashboard():
   </div>
 
   <div style="margin-bottom:10px;">
+    <button onclick="enableDirectPush()" class="btn" style="background:#8b5cf6;">🔔 ENABLE DIRECT PUSH</button>
+    <a href="/test-push" class="btn" style="background:#ec4899;">🔔 TEST PUSH</a>
     <a href="/kill/on" class="btn" style="background:#dc2626;">🚨 KILL SWITCH</a>
     <a href="/kill/off" class="btn" style="background:#16a34a;">🔓 UNLOCK</a>
     <a href="/ai-brief" class="btn" style="background:#6366f1;">🧠 GEMINI BRIEF</a>
     <a href="/test-telegram" class="btn" style="background:#0ea5e9;">📩 TEST TELEGRAM</a>
     <a href="/test-dhan" class="btn" style="background:#f59e0b;color:#000;">📡 TEST DHAN</a>
   </div>
+  <p id="push-msg" style="font-size:11px;color:#38bdf8;margin:4px 0 10px 0;"></p>
 
   <div style="margin-bottom:14px;font-size:12px;">
     <b>Mode:</b>
@@ -385,6 +465,65 @@ def dashboard():
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js').catch(() => {});
     }
+
+    function playBeep() {
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = 880;
+        gain.gain.setValueAtTime(0.15, ctx.currentTime);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.18);
+      } catch (e) {}
+    }
+
+    function urlB64ToUint8(b64) {
+      const pad = '='.repeat((4 - b64.length % 4) % 4);
+      const base64 = (b64 + pad).replace(/-/g, '+').replace(/_/g, '/');
+      const raw = atob(base64);
+      return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
+    }
+
+    async function enableDirectPush() {
+      const msgEl = document.getElementById('push-msg');
+      try {
+        if (!('Notification' in window) || !('serviceWorker' in navigator)) {
+          msgEl.textContent = '❌ Is browser me push support nahi hai (Chrome/Installed App use karein).';
+          return;
+        }
+        const perm = await Notification.requestPermission();
+        if (perm !== 'granted') {
+          msgEl.textContent = '❌ Notification permission allow nahi ki gayi.';
+          return;
+        }
+        const reg = await navigator.serviceWorker.ready;
+        const kr = await fetch('/api/vapid-public');
+        const kd = await kr.json();
+        if (!kd.publicKey) {
+          msgEl.textContent = '❌ Server VAPID key ready nahi hai.';
+          return;
+        }
+        const sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlB64ToUint8(kd.publicKey)
+        });
+        await fetch('/api/push-subscribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(sub)
+        });
+        playBeep();
+        msgEl.textContent = '✅ Direct Phone Push ON ho gaya! Ab TEST PUSH dabayein.';
+      } catch (e) {
+        msgEl.textContent = '❌ Push Error: ' + e.message;
+      }
+    }
+
+    let lastTopTradeKey = null;
     async function refreshState() {
       try {
         const r = await fetch('/api/state');
@@ -401,6 +540,12 @@ def dashboard():
         pnlEl.textContent = '₹' + d.today_pnl.toLocaleString('en-IN', {minimumFractionDigits:2});
         pnlEl.style.color = d.today_pnl >= 0 ? '#22c55e' : '#ef4444';
         document.getElementById('winrate').textContent = `${d.win_rate}% (${d.wins}/${d.total})`;
+
+        if (d.trades.length > 0) {
+          const topKey = d.trades[0].id + '_' + d.trades[0].status;
+          if (lastTopTradeKey && lastTopTradeKey !== topKey) playBeep();
+          lastTopTradeKey = topKey;
+        }
 
         let rows = '';
         for (const t of d.trades) {
@@ -425,7 +570,7 @@ def dashboard():
 @app.route("/kill/on")
 def kill_on():
     db.update_setting("kill_switch", True)
-    send_telegram("🚨 <b>MANUAL KILL SWITCH ACTIVATED!</b>")
+    broadcast_alert("🚨 ANAS AI LOCKED", "Manual Kill Switch activated.", "🚨 <b>MANUAL KILL SWITCH ACTIVATED!</b>")
     return redirect("/")
 
 @app.route("/kill/off")
@@ -464,11 +609,20 @@ def reset_sim():
     db.reset_paper_data()
     return redirect("/")
 
+@app.route("/test-push")
+def test_push():
+    sent, msg = push_service.send_web_push(
+        "⚡ ANAS AI Direct Push!",
+        "Phone lock hone par bhi aapko aise hi live Entry/SL/Target alerts milenge!"
+    )
+    color = "#22c55e" if sent > 0 else "#f59e0b"
+    return f"<body style='background:#0b0f19;color:{color};font-family:sans-serif;padding:20px;'><h2>🔔 Direct App Push Test</h2><p>{msg}</p><a href='/' style='color:#38bdf8;'>← Back</a></body>"
+
 @app.route("/test-telegram")
 def test_telegram():
     ok, msg = send_telegram("⚡ <b>ANAS AI Telegram Connected!</b>\nAlerts bilkul sahi kaam kar rahe hain.")
     color = "#22c55e" if ok else "#ef4444"
-    return f"<body style='background:#0b0f19;color:{color};font-family:sans-serif;padding:20px;'><h2>📩 Telegram Test Result</h2><p>{msg}</p><p style='color:#94a3b8;'>Tip: Telegram app me apne bot ko open karke /start zaroor bhejein.</p><a href='/' style='color:#38bdf8;'>← Back</a></body>"
+    return f"<body style='background:#0b0f19;color:{color};font-family:sans-serif;padding:20px;'><h2>📩 Telegram Test Result</h2><p>{msg}</p><a href='/' style='color:#38bdf8;'>← Back</a></body>"
 
 @app.route("/test-dhan")
 def test_dhan():
