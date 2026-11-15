@@ -1,6 +1,7 @@
 import os
 import requests
 from datetime import datetime, timedelta
+import db
 
 BASE_URL = "https://api.dhan.co/v2"
 
@@ -10,16 +11,20 @@ INSTRUMENTS = {
     "SENSEX": {"id": "51", "seg": "IDX_I", "step": 100, "lot": 20},
 }
 
+def _get_token():
+    state = db.get_system_state()
+    return state["dhan_token"] or os.getenv("DHAN_ACCESS_TOKEN", "").strip()
+
 def _headers():
     return {
         "Content-Type": "application/json",
         "Accept": "application/json",
-        "access-token": os.getenv("DHAN_ACCESS_TOKEN", ""),
-        "client-id": os.getenv("DHAN_CLIENT_ID", "")
+        "access-token": _get_token(),
+        "client-id": os.getenv("DHAN_CLIENT_ID", "").strip()
     }
 
 def is_dhan_configured():
-    return bool(os.getenv("DHAN_ACCESS_TOKEN") and os.getenv("DHAN_CLIENT_ID"))
+    return bool(_get_token() and os.getenv("DHAN_CLIENT_ID", "").strip())
 
 def get_pdh_pdl(symbol: str):
     cfg = INSTRUMENTS[symbol]
@@ -97,11 +102,7 @@ def pick_pro_strike_and_pcr(symbol: str, oc_data: dict, side: str, is_expiry: bo
     spot = float(oc_data.get("last_price", 0))
     atm = int(round(spot / step) * step)
 
-    # Expiry day par Theta decay se bachne ke liye 1-step ITM, warna ATM
-    if is_expiry:
-        target_strike = (atm - step) if side == "BUY_CE" else (atm + step)
-    else:
-        target_strike = atm
+    target_strike = ((atm - step) if side == "BUY_CE" else (atm + step)) if is_expiry else atm
 
     oc_map = {}
     ce_oi_sum, pe_oi_sum = 0.0, 0.0
@@ -117,7 +118,6 @@ def pick_pro_strike_and_pcr(symbol: str, oc_data: dict, side: str, is_expiry: bo
     leg = oc_map.get(target_strike, {}).get(leg_key, {})
     ltp = float(leg.get("last_price") or 0)
 
-    # OI Confirmation Check
     oi_ok = True
     if side == "BUY_CE" and pcr < 0.60:
         oi_ok = False

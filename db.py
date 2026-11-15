@@ -10,7 +10,7 @@ load_dotenv()
 def get_conn():
     raw_url = os.getenv("DATABASE_URL", "")
     if not raw_url or "YAHAN_" in raw_url:
-        raise ValueError("DATABASE_URL .env file me set nahi hai!")
+        raise ValueError("DATABASE_URL .env/Environment me set nahi hai!")
     url = urlparse(raw_url)
     for attempt in range(3):
         try:
@@ -40,10 +40,14 @@ def init_db():
             kill_switch BOOLEAN DEFAULT FALSE,
             market_bias VARCHAR(30) DEFAULT 'NEUTRAL',
             active_symbol VARCHAR(20) DEFAULT 'NIFTY',
+            dhan_token TEXT DEFAULT '',
+            last_brief_date VARCHAR(20) DEFAULT '',
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
     cur.execute("ALTER TABLE system_config ADD COLUMN IF NOT EXISTS active_symbol VARCHAR(20) DEFAULT 'NIFTY'")
+    cur.execute("ALTER TABLE system_config ADD COLUMN IF NOT EXISTS dhan_token TEXT DEFAULT ''")
+    cur.execute("ALTER TABLE system_config ADD COLUMN IF NOT EXISTS last_brief_date VARCHAR(20) DEFAULT ''")
     cur.execute("INSERT INTO system_config (id) VALUES (1) ON CONFLICT (id) DO NOTHING")
     cur.execute("""
         CREATE TABLE IF NOT EXISTS trades_journal (
@@ -73,7 +77,8 @@ def get_system_state():
     cur = conn.cursor()
     cur.execute("""
         SELECT trading_mode, active_capital, safe_vault_profit,
-               daily_max_loss_pct, kill_switch, market_bias, active_symbol
+               daily_max_loss_pct, kill_switch, market_bias, active_symbol,
+               dhan_token, last_brief_date
         FROM system_config WHERE id = 1
     """)
     row = cur.fetchone()
@@ -85,17 +90,49 @@ def get_system_state():
         "max_loss_pct": float(row[3]),
         "kill_switch": bool(row[4]),
         "market_bias": row[5],
-        "active_symbol": row[6] or "NIFTY"
+        "active_symbol": row[6] or "NIFTY",
+        "dhan_token": (row[7] or "").strip(),
+        "last_brief_date": row[8] or ""
     }
 
 def update_setting(field: str, value):
-    if field not in ("kill_switch", "trading_mode", "active_symbol"):
+    allowed = ("kill_switch", "trading_mode", "active_symbol", "dhan_token", "last_brief_date")
+    if field not in allowed:
         return
     conn = get_conn()
     cur = conn.cursor()
     cur.execute(f"UPDATE system_config SET {field} = %s, updated_at = NOW() WHERE id = 1", (value,))
     conn.commit()
     conn.close()
+
+def reset_paper_data():
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM trades_journal")
+    cur.execute("""
+        UPDATE system_config
+        SET active_capital = 50000.00, safe_vault_profit = 0.00, kill_switch = FALSE, updated_at = NOW()
+        WHERE id = 1
+    """)
+    conn.commit()
+    conn.close()
+
+def get_analytics():
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT
+            COUNT(*) FILTER (WHERE status = 'CLOSED'),
+            COUNT(*) FILTER (WHERE status = 'CLOSED' AND pnl_net > 0),
+            COALESCE(SUM(pnl_net) FILTER (WHERE status = 'CLOSED'), 0)
+        FROM trades_journal
+    """)
+    row = cur.fetchone()
+    conn.close()
+    total = int(row[0] or 0)
+    wins = int(row[1] or 0)
+    win_rate = round((wins / total) * 100.0, 1) if total > 0 else 0.0
+    return {"total": total, "wins": wins, "losses": total - wins, "win_rate": win_rate, "total_pnl": float(row[2] or 0)}
 
 def get_today_pnl():
     conn = get_conn()
@@ -167,7 +204,7 @@ def close_virtual_trade(trade_id, exit_price, gross_pnl):
     conn.close()
     return net_pnl
 
-def get_recent_trades(limit=15):
+def get_recent_trades(limit=12):
     conn = get_conn()
     cur = conn.cursor()
     cur.execute("""
