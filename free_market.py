@@ -1,14 +1,24 @@
+import re
 import time
 import requests
 from datetime import datetime, timedelta
 
 YF_MAP = {
-    "NIFTY": {"ticker": "^NSEI", "step": 50, "lot": 75},
-    "BANKNIFTY": {"ticker": "^NSEBANK", "step": 100, "lot": 30},
-    "SENSEX": {"ticker": "^BSESN", "step": 100, "lot": 20},
+    "NIFTY": {"ticker": "^NSEI", "gf": "NIFTY_50:INDEXNSE", "step": 50, "lot": 75},
+    "BANKNIFTY": {"ticker": "^NSEBANK", "gf": "NIFTY_BANK:INDEXNSE", "step": 100, "lot": 30},
+    "SENSEX": {"ticker": "^BSESN", "gf": "SENSEX:INDEXBOM", "step": 100, "lot": 20},
 }
 
 _cache = {}
+
+def get_google_spot(symbol: str):
+    gf = YF_MAP[symbol]["gf"]
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+    r = requests.get(f"https://www.google.com/finance/quote/{gf}", headers=headers, timeout=5)
+    m = re.search(r'class="YMlKec fxKbKc">([0-9,]+\.?[0-9]*)<', r.text)
+    if m:
+        return round(float(m.group(1).replace(",", "")), 2)
+    raise ValueError(f"Google spot parse failed ({r.status_code})")
 
 def get_free_market_data(symbol: str, force: bool = False):
     now_ts = time.time()
@@ -23,16 +33,17 @@ def get_free_market_data(symbol: str, force: bool = False):
     for host in ("query1.finance.yahoo.com", "query2.finance.yahoo.com"):
         try:
             url = f"https://{host}/v8/finance/chart/{cfg['ticker']}"
-            r = requests.get(url, params={"interval": "5m", "range": "5d"}, headers=headers, timeout=10)
+            r = requests.get(url, params={"interval": "5m", "range": "5d"}, headers=headers, timeout=5)
             if r.status_code == 200:
                 data = r.json()
                 break
-            last_err = f"HTTP {r.status_code}"
+            last_err = f"Yahoo HTTP {r.status_code}"
         except Exception as e:
             last_err = str(e)
 
     if not data or not data.get("chart", {}).get("result"):
-        raise ValueError(f"Feed Error ({symbol}): {last_err}")
+        spot = get_google_spot(symbol)
+        raise ValueError(f"Candles blocked ({last_err}) | Google Spot: {spot}")
 
     res = data["chart"]["result"][0]
     meta = res["meta"]

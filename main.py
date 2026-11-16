@@ -23,13 +23,15 @@ ALL_INDICES = ["NIFTY", "BANKNIFTY", "SENSEX"]
 
 runtime_status = {
     "spots": {"NIFTY": 0.0, "BANKNIFTY": 0.0, "SENSEX": 0.0},
-    "last_msg": "Initializing...",
+    "last_msg": "Starting Engine...",
+    "ticks": 0,
     "pcr": 1.0,
     "is_expiry": False
 }
 sim_candles = []
 sim_bias = 1.0
-_engine_started = False
+_engine_pid = None
+_engine_thread = None
 _engine_lock = threading.Lock()
 
 def broadcast_alert(title: str, body: str, tg_html: str):
@@ -40,12 +42,9 @@ def calc_capped_sl_target(opt_entry: float, active_capital: float, lot: int):
     max_risk_rs = active_capital * 0.015
     max_sl_pts = max(round(max_risk_rs / max(lot, 1), 2), 8.0)
     sl_pts = min(round(opt_entry * 0.18, 2), max_sl_pts)
-    opt_sl = round(opt_entry - sl_pts, 2)
-    opt_target = round(opt_entry + (sl_pts * 2.0), 2)
-    return opt_sl, opt_target
+    return round(opt_entry - sl_pts, 2), round(opt_entry + (sl_pts * 2.0), 2)
 
 def step_trail_check(tid, tsym, entry, sl, trail_sl, curr_opt):
-    # +15% profit -> Cost Trail; +25% profit -> +12% Profit Lock
     cost_lvl = round(entry * 1.15, 2)
     lock_trigger = round(entry * 1.25, 2)
     lock_sl = round(entry * 1.12, 2)
@@ -111,8 +110,11 @@ def sync_real_spots_once():
         try:
             sp, _, _, _, _, _ = free_market.get_free_market_data(s)
             runtime_status["spots"][s] = sp
-        except Exception as e:
-            runtime_status["last_msg"] = f"Feed Notice ({s}): {str(e)[:50]}"
+        except Exception:
+            try:
+                runtime_status["spots"][s] = free_market.get_google_spot(s)
+            except Exception as e2:
+                runtime_status["last_msg"] = f"Feed Notice ({s}): {str(e2)[:50]}"
 
 def check_risk_limits():
     rstats = db.get_today_risk_stats()
@@ -129,16 +131,18 @@ def check_risk_limits():
 
 def anas_trading_loop():
     global sim_candles
-    sync_real_spots_once()
+    runtime_status["last_msg"] = "Engine Active — Syncing spots..."
     for i in range(38):
         sim_candles.append(generate_sim_candle(i))
 
     cached_pdh_pdl = {}
     cached_expiry = {}
     last_eval_ts = {}
+    last_closed_sync = 0.0
 
     while True:
         try:
+            runtime_status["ticks"] += 1
             state = db.get_system_state()
             now_ist = ist_now()
             today_str = now_ist.strftime("%Y-%m-%d")
@@ -207,8 +211,9 @@ def anas_trading_loop():
 
             elif mode == "PAPER_REAL":
                 if not is_indian_market_open():
-                    if runtime_status["spots"]["NIFTY"] == 0.0:
+                    if time.time() - last_closed_sync > 180:
                         sync_real_spots_once()
+                        last_closed_sync = time.time()
                     runtime_status["last_msg"] = "Market Closed (09:15 - 15:30 IST Mon-Fri)"
                     time.sleep(15)
                     continue
@@ -351,28 +356,29 @@ def anas_trading_loop():
             print("Loop Error:", e)
         time.sleep(5)
 
-def start_engine_once():
-    global _engine_started
+def ensure_engine_alive():
+    global _engine_pid, _engine_thread
+    cur_pid = os.getpid()
     with _engine_lock:
-        if not _engine_started:
+        if _engine_pid != cur_pid or _engine_thread is None or not _engine_thread.is_alive():
             db.init_db()
             push_service.ensure_vapid_keys()
-            t = threading.Thread(target=anas_trading_loop, daemon=True)
-            t.start()
-            _engine_started = True
+            _engine_thread = threading.Thread(target=anas_trading_loop, daemon=True)
+            _engine_thread.start()
+            _engine_pid = cur_pid
 
-start_engine_once()
+@app.before_request
+def check_bg():
+    ensure_engine_alive()
+
+ensure_engine_alive()
 
 @app.route("/manifest.json")
 def manifest():
     return jsonify({
-        "name": "ANAS AI Pro Trader",
-        "short_name": "ANAS AI",
-        "start_url": "/",
-        "display": "standalone",
-        "orientation": "portrait",
-        "background_color": "#0b0f19",
-        "theme_color": "#0b0f19",
+        "name": "ANAS AI Pro Trader", "short_name": "ANAS AI", "start_url": "/",
+        "display": "standalone", "orientation": "portrait",
+        "background_color": "#0b0f19", "theme_color": "#0b0f19",
         "icons": [
             {"src": "/icon-192.png", "sizes": "192x192", "type": "image/png"},
             {"src": "/icon-512.png", "sizes": "512x512", "type": "image/png"}
@@ -440,7 +446,8 @@ def api_state():
     return jsonify({
         "symbol": sym, "spot_txt": spot_txt, "mode": state["mode"],
         "kill_switch": state["kill_switch"], "is_expiry": runtime_status["is_expiry"],
-        "dhan_ok": dhan_bridge.is_dhan_configured(), "brain": runtime_status["last_msg"],
+        "dhan_ok": dhan_bridge.is_dhan_configured(),
+        "brain": f"{runtime_status['last_msg']} (Ticks:{runtime_status['ticks']})",
         "capital": state["active_capital"], "vault": state["safe_vault"],
         "today_pnl": today_pnl, "wins": stats["wins"], "total": stats["total"],
         "win_rate": stats["win_rate"], "trades": t_list
@@ -451,7 +458,7 @@ def dashboard():
     return """<!DOCTYPE html>
 <html>
 <head>
-  <title>ANAS AI - Mature Quant v6.0</title>
+  <title>ANAS AI - Mature Quant v6.1</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
   <meta name="theme-color" content="#0b0f19">
   <meta name="mobile-web-app-capable" content="yes">
@@ -471,7 +478,7 @@ def dashboard():
   </style>
 </head>
 <body>
-  <h2 style="margin:4px 0 6px 0;">⚡ ANAS AI <span style="font-size:12px;color:#38bdf8;">QUANT v6.0</span></h2>
+  <h2 style="margin:4px 0 6px 0;">⚡ ANAS AI <span style="font-size:12px;color:#38bdf8;">QUANT v6.1</span></h2>
   <p id="status-line" style="font-size:12px;margin:4px 0;">Loading live engine...</p>
   <p id="brain-line" style="font-size:11px;color:#94a3b8;margin:4px 0 12px 0;">Connecting...</p>
 
@@ -491,6 +498,7 @@ def dashboard():
     <a href="/ai-audit" class="btn" style="background:#7c3aed;">📊 AI TRADE AUDIT</a>
     <a href="/test-telegram" class="btn" style="background:#0ea5e9;">📩 TEST TELEGRAM</a>
     <a href="/test-dhan" class="btn" style="background:#f59e0b;color:#000;">📡 TEST DHAN</a>
+    <a href="/test-feed" class="btn" style="background:#10b981;color:#000;">📶 TEST FEED</a>
   </div>
   <p id="push-msg" style="font-size:11px;color:#38bdf8;margin:4px 0 10px 0;"></p>
 
@@ -636,6 +644,18 @@ def reset_sim():
         return "<body style='background:#0b0f19;color:#ef4444;padding:20px;font-family:sans-serif;'>❌ Galat PIN!<br><a href='/' style='color:#38bdf8;'>← Back</a></body>"
     db.reset_paper_data()
     return redirect("/")
+
+@app.route("/test-feed")
+def test_feed():
+    lines = []
+    for s in ALL_INDICES:
+        try:
+            sp, pdh, pdl, c, _, _ = free_market.get_free_market_data(s, force=True)
+            runtime_status["spots"][s] = sp
+            lines.append(f"✅ <b>{s}</b>: Spot={sp} | PDH={pdh} | PDL={pdl} | Candles={len(c)}")
+        except Exception as e:
+            lines.append(f"⚠️ <b>{s}</b>: {e}")
+    return f"<body style='background:#0b0f19;color:#e2e8f0;font-family:sans-serif;padding:20px;'><h2>📶 Free Market Feed Check</h2><p>{'<br>'.join(lines)}</p><br><a href='/' style='color:#38bdf8;'>← Back</a></body>"
 
 @app.route("/test-push")
 def test_push():
