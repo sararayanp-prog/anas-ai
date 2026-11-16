@@ -14,7 +14,7 @@ import free_market
 import push_service
 from structure_engine import analyze_market_structure, ist_now
 from telegram_alert import send_telegram
-from ai_analyst import generate_premarket_brief
+from ai_analyst import generate_premarket_brief, audit_todays_trades
 
 load_dotenv()
 app = Flask(__name__)
@@ -22,7 +22,7 @@ app = Flask(__name__)
 ALL_INDICES = ["NIFTY", "BANKNIFTY", "SENSEX"]
 
 runtime_status = {
-    "spots": {"NIFTY": 24450.0, "BANKNIFTY": 52000.0, "SENSEX": 79000.0},
+    "spots": {"NIFTY": 0.0, "BANKNIFTY": 0.0, "SENSEX": 0.0},
     "last_msg": "Initializing...",
     "pcr": 1.0,
     "is_expiry": False
@@ -44,13 +44,22 @@ def calc_capped_sl_target(opt_entry: float, active_capital: float, lot: int):
     opt_target = round(opt_entry + (sl_pts * 2.0), 2)
     return opt_sl, opt_target
 
+def step_trail_check(tid, tsym, entry, sl, trail_sl, curr_opt):
+    # +15% profit -> Cost Trail; +25% profit -> +12% Profit Lock
+    cost_lvl = round(entry * 1.15, 2)
+    lock_trigger = round(entry * 1.25, 2)
+    lock_sl = round(entry * 1.12, 2)
+    if curr_opt >= lock_trigger and trail_sl < lock_sl:
+        db.update_trailing_sl(tid, lock_sl)
+        broadcast_alert(f"🔒 Profit Locked: {tsym}", f"SL locked at +12% (₹{lock_sl})", f"🔒 <b>PROFIT LOCKED (+12%)</b>\n{tsym} | New SL: ₹{lock_sl}")
+    elif curr_opt >= cost_lvl and trail_sl < entry:
+        db.update_trailing_sl(tid, entry)
+        broadcast_alert(f"🛡️ Cost Trail: {tsym}", f"SL moved to Cost ₹{entry}", f"🛡️ <b>SL TRAILED TO COST</b>\n{tsym} | New SL: ₹{entry}")
+
 def make_png_icon(size: int):
     rows = []
-    bg = (11, 15, 25)
-    border = (56, 189, 248)
-    accent = (250, 204, 21)
-    pad = size // 8
-    mid = size // 2
+    bg, border, accent = (11, 15, 25), (56, 189, 248), (250, 204, 21)
+    pad, mid = size // 8, size // 2
     for y in range(size):
         row = bytearray([0])
         for x in range(size):
@@ -79,6 +88,8 @@ ICON_512 = make_png_icon(512)
 
 def generate_sim_candle(ts_val):
     global sim_bias
+    if runtime_status["spots"]["NIFTY"] == 0.0:
+        runtime_status["spots"]["NIFTY"] = 25950.0
     if random.random() < 0.12:
         sim_bias *= -1
     open_p = runtime_status["spots"]["NIFTY"]
@@ -95,12 +106,20 @@ def is_indian_market_open():
         return False
     return dt_time(9, 15) <= now.time() <= dt_time(15, 30)
 
+def sync_real_spots_once():
+    for s in ALL_INDICES:
+        try:
+            sp, _, _, _, _, _ = free_market.get_free_market_data(s)
+            runtime_status["spots"][s] = sp
+        except Exception as e:
+            runtime_status["last_msg"] = f"Feed Notice ({s}): {str(e)[:50]}"
+
 def check_risk_limits():
     rstats = db.get_today_risk_stats()
     if rstats["trades_today"] >= 3:
         return False, "Max 3 Trades/Day Limit Reached (Discipline Shield)"
     if rstats["losses_today"] >= 2:
-        return False, "2-Loss Capital Shield Active (Reset Test Data karein agar old SIM loss tha)"
+        return False, "2-Loss Capital Shield Active (Reset Test Data karein agar old loss tha)"
     if rstats["last_loss_at"]:
         elapsed = (datetime.utcnow() - rstats["last_loss_at"].replace(tzinfo=None)).total_seconds()
         if elapsed < 900:
@@ -110,7 +129,8 @@ def check_risk_limits():
 
 def anas_trading_loop():
     global sim_candles
-    for i in range(28):
+    sync_real_spots_once()
+    for i in range(38):
         sim_candles.append(generate_sim_candle(i))
 
     cached_pdh_pdl = {}
@@ -126,11 +146,7 @@ def anas_trading_loop():
             if now_ist.weekday() < 5 and dt_time(8, 55) <= now_ist.time() <= dt_time(9, 10):
                 if state["last_brief_date"] != today_str:
                     brief = generate_premarket_brief()
-                    broadcast_alert(
-                        "🌅 ANAS AI Morning Brief",
-                        brief[:180],
-                        f"🌅 <b>ANAS AI MORNING BRIEF ({today_str})</b>\n\n{brief[:3500]}"
-                    )
+                    broadcast_alert("🌅 ANAS AI Morning Brief", brief[:180], f"🌅 <b>ANAS AI MORNING BRIEF ({today_str})</b>\n\n{brief[:3500]}")
                     db.update_setting("last_brief_date", today_str)
 
             today_pnl = db.get_today_pnl()
@@ -139,11 +155,7 @@ def anas_trading_loop():
 
             if not state["kill_switch"] and eff_pnl <= max_loss_amt:
                 db.update_setting("kill_switch", True)
-                broadcast_alert(
-                    "🚨 KILL SWITCH TRIGGERED!",
-                    f"Daily Max Loss ({eff_pnl:.2f}) hit. Trading locked.",
-                    f"🚨 <b>KILL SWITCH TRIGGERED!</b>\nLoss ({eff_pnl:.2f}) hit."
-                )
+                broadcast_alert("🚨 KILL SWITCH TRIGGERED!", f"Daily Max Loss ({eff_pnl:.2f}) hit.", f"🚨 <b>KILL SWITCH TRIGGERED!</b>\nLoss ({eff_pnl:.2f}) hit.")
 
             if state["kill_switch"]:
                 runtime_status["last_msg"] = "KILL SWITCH ACTIVE (UNLOCK ya Reset dabayein)"
@@ -155,25 +167,19 @@ def anas_trading_loop():
             scan_list = ALL_INDICES if active_sym == "ALL" else [active_sym]
             open_trades = db.get_open_trades()
 
-            # --- MODE 1: SIMULATION ---
             if mode == "PAPER_SIM":
                 new_c = generate_sim_candle(int(time.time()))
                 sim_candles.append(new_c)
-                if len(sim_candles) > 60:
+                if len(sim_candles) > 80:
                     sim_candles.pop(0)
-
                 spot = new_c["close"]
+
                 for t in open_trades:
                     tid, tsym, inst, side, reason, entry, sl, target, trail_sl, qty, is_exp, spot_ref = t
-                    entry, target, trail_sl, spot_ref = float(entry), float(target), float(trail_sl), float(spot_ref or spot)
+                    entry, sl, target, trail_sl, spot_ref = float(entry), float(sl), float(target), float(trail_sl), float(spot_ref or spot)
                     mult = 1.0 if side == "BUY_CE" else -1.0
                     curr_opt = max(round(entry + (spot - spot_ref) * 0.5 * mult, 2), 5.0)
-                    risk = abs(entry - float(sl))
-
-                    if curr_opt >= round(entry + risk, 2) and trail_sl < entry:
-                        db.update_trailing_sl(tid, entry)
-                        broadcast_alert(f"🛡️ SL Trailed: {tsym}", f"Cost Trail: ₹{entry}", f"🛡️ <b>SL TRAILED TO COST</b>\n{tsym} | New SL: ₹{entry}")
-
+                    step_trail_check(tid, tsym, entry, sl, trail_sl, curr_opt)
                     if curr_opt <= trail_sl:
                         net = db.close_virtual_trade(tid, trail_sl, (trail_sl - entry) * qty)
                         broadcast_alert(f"🔴 SL Hit: {tsym}", f"Exit ₹{trail_sl} | Net P&L: ₹{net}", f"🔴 <b>SL HIT EXIT</b>\n{tsym} @ ₹{trail_sl}\nNet P&L: ₹{net}")
@@ -189,44 +195,34 @@ def anas_trading_loop():
                         pdh = max(c["high"] for c in sim_candles[:-1]) - 5
                         pdl = min(c["low"] for c in sim_candles[:-1]) + 5
                         res = analyze_market_structure(sim_candles, pdh=pdh, pdl=pdl, is_expiry=False, check_hours=False)
-                        runtime_status["last_msg"] = res["reason"]
+                        runtime_status["last_msg"] = f"[SIM] {res['reason']}"
                         if res["signal"] in ("BUY_CE", "BUY_PE"):
                             side = res["signal"]
                             opt_entry = 140.0
                             opt_sl, opt_target = calc_capped_sl_target(opt_entry, state["active_capital"], 75)
                             strike = int(round(spot / 50.0) * 50)
                             opt_sym = f"NIFTY {strike} {'CE' if side == 'BUY_CE' else 'PE'}"
-                            db.open_virtual_trade(opt_sym, "NIFTY", side, res["reason"], opt_entry, opt_sl, opt_target, 75, False, spot)
-                            broadcast_alert(
-                                f"🟢 SIGNAL (SIM): {opt_sym}",
-                                f"Entry ₹{opt_entry} | SL ₹{opt_sl} | Target ₹{opt_target}",
-                                f"🟢 <b>ANAS AI SIGNAL (SIM)</b>\n<b>{opt_sym}</b>\nEntry: ₹{opt_entry} | SL: ₹{opt_sl} | Target: ₹{opt_target}\nSetup: {res['reason']}"
-                            )
+                            db.open_virtual_trade(opt_sym, "NIFTY", side, f"[SIM] {res['reason']}", opt_entry, opt_sl, opt_target, 75, False, spot)
+                            broadcast_alert(f"🟢 SIGNAL (SIM): {opt_sym}", f"Entry ₹{opt_entry} | SL ₹{opt_sl} | Target ₹{opt_target}", f"🟢 <b>ANAS AI SIGNAL (SIM)</b>\n<b>{opt_sym}</b>\nEntry: ₹{opt_entry} | SL: ₹{opt_sl} | Target: ₹{opt_target}\nSetup: {res['reason']}")
 
-            # --- MODE 2: FREE REAL INDIAN MARKET (ALL 3 SCANNER SUPPORTED!) ---
             elif mode == "PAPER_REAL":
                 if not is_indian_market_open():
+                    if runtime_status["spots"]["NIFTY"] == 0.0:
+                        sync_real_spots_once()
                     runtime_status["last_msg"] = "Market Closed (09:15 - 15:30 IST Mon-Fri)"
-                    time.sleep(10)
+                    time.sleep(15)
                     continue
 
-                # Manage open trade on its exact instrument (t[2])
                 for t in open_trades:
                     tid, tsym, inst, side, reason, entry, sl, target, trail_sl, qty, is_exp, spot_ref = t
-                    entry, target, trail_sl, spot_ref = float(entry), float(target), float(trail_sl), float(spot_ref or 0)
+                    entry, sl, target, trail_sl, spot_ref = float(entry), float(sl), float(target), float(trail_sl), float(spot_ref or 0)
                     spot, _, _, _, _, _ = free_market.get_free_market_data(inst)
                     runtime_status["spots"][inst] = spot
                     if spot_ref == 0:
                         spot_ref = spot
-
                     mult = 1.0 if side == "BUY_CE" else -1.0
                     curr_opt = max(round(entry + (spot - spot_ref) * 0.5 * mult, 2), 5.0)
-                    risk = abs(entry - float(sl))
-
-                    if curr_opt >= round(entry + risk, 2) and trail_sl < entry:
-                        db.update_trailing_sl(tid, entry)
-                        broadcast_alert(f"🛡️ SL Trailed: {tsym}", f"Cost Trail: ₹{entry}", f"🛡️ <b>SL TRAILED TO COST</b>\n{tsym} | New SL: ₹{entry}")
-
+                    step_trail_check(tid, tsym, entry, sl, trail_sl, curr_opt)
                     if curr_opt <= trail_sl:
                         net = db.close_virtual_trade(tid, curr_opt, (curr_opt - entry) * qty)
                         broadcast_alert(f"🔴 SL Hit (REAL): {tsym}", f"Exit ₹{curr_opt} | Net P&L: ₹{net}", f"🔴 <b>SL HIT EXIT (REAL)</b>\n{tsym} @ ₹{curr_opt}\nNet P&L: ₹{net}")
@@ -243,7 +239,7 @@ def anas_trading_loop():
                         for s in scan_list:
                             spot, pdh, pdl, candles, step, lot = free_market.get_free_market_data(s)
                             runtime_status["spots"][s] = spot
-                            if len(candles) < 26:
+                            if len(candles) < 36:
                                 continue
                             closed_candles = candles[:-1]
                             latest_ts = closed_candles[-1]["ts"]
@@ -257,22 +253,17 @@ def anas_trading_loop():
                                     opt_sl, opt_target = calc_capped_sl_target(opt_entry, state["active_capital"], lot)
                                     strike = int(round(spot / step) * step)
                                     opt_sym = f"{s} {strike} {'CE' if side == 'BUY_CE' else 'PE'}"
-                                    db.open_virtual_trade(opt_sym, s, side, res["reason"], opt_entry, opt_sl, opt_target, lot, False, spot)
-                                    broadcast_alert(
-                                        f"🟢 REAL SIGNAL: {opt_sym}",
-                                        f"Spot {spot} | Proxy ₹{opt_entry} | SL ₹{opt_sl} | Target ₹{opt_target}",
-                                        f"🟢 <b>ANAS AI REAL SIGNAL</b>\n<b>{opt_sym}</b> (Spot: {spot})\nProxy Entry: ₹{opt_entry} | SL: ₹{opt_sl} | Target: ₹{opt_target}\nSetup: {res['reason']}"
-                                    )
+                                    db.open_virtual_trade(opt_sym, s, side, f"[REAL] {res['reason']}", opt_entry, opt_sl, opt_target, lot, False, spot)
+                                    broadcast_alert(f"🟢 REAL SIGNAL: {opt_sym}", f"Spot {spot} | Proxy ₹{opt_entry} | SL ₹{opt_sl} | Target ₹{opt_target}", f"🟢 <b>ANAS AI REAL SIGNAL</b>\n<b>{opt_sym}</b> (Spot: {spot})\nProxy Entry: ₹{opt_entry} | SL: ₹{opt_sl} | Target: ₹{opt_target}\nSetup: {res['reason']}")
                                     runtime_status["last_msg"] = f"[{s}] {res['reason']}"
                                     break
                                 else:
                                     runtime_status["last_msg"] = f"[{s}] {res['reason']}"
                         if msgs and len(scan_list) > 1:
-                            runtime_status["last_msg"] = "ALL-3 Scan: " + " | ".join(msgs)
-                time.sleep(10)
+                            runtime_status["last_msg"] = "ALL-3: " + " | ".join(msgs)
+                time.sleep(15)
                 continue
 
-            # --- MODE 3: LIVE DHAN DATA + OPTION CHAIN (ALL 3 SCANNER SUPPORTED!) ---
             elif mode == "PAPER_DHAN":
                 if not dhan_bridge.is_dhan_configured():
                     runtime_status["last_msg"] = "Dhan Token Pending — tab tak 📈 FREE REAL MARKET use karein!"
@@ -281,35 +272,28 @@ def anas_trading_loop():
 
                 if not is_indian_market_open():
                     runtime_status["last_msg"] = "Market Closed (09:15 - 15:30 IST Mon-Fri)"
-                    time.sleep(10)
+                    time.sleep(15)
                     continue
 
                 for t in open_trades:
                     tid, tsym, inst, side, reason, entry, sl, target, trail_sl, qty, _, _ = t
-                    entry, target, trail_sl = float(entry), float(target), float(trail_sl)
+                    entry, sl, target, trail_sl = float(entry), float(sl), float(target), float(trail_sl)
                     if inst not in cached_expiry or cached_expiry[inst]["date"] != today_str:
                         cached_expiry[inst] = {"date": today_str, "expiry": dhan_bridge.get_nearest_expiry(inst)}
                     oc_data = dhan_bridge.get_option_chain_snapshot(inst, cached_expiry[inst]["expiry"])
                     runtime_status["spots"][inst] = float(oc_data.get("last_price") or runtime_status["spots"][inst])
-
                     parts = tsym.split()
-                    t_strike = int(parts[1])
-                    leg_key = "ce" if parts[2] == "CE" else "pe"
+                    t_strike, leg_key = int(parts[1]), ("ce" if parts[2] == "CE" else "pe")
 
                     curr_opt = None
                     for k, v in oc_data["oc"].items():
                         if int(round(float(k))) == t_strike:
                             curr_opt = float(v.get(leg_key, {}).get("last_price") or 0)
                             break
-
                     if not curr_opt or curr_opt <= 0:
                         continue
 
-                    risk = abs(entry - float(sl))
-                    if curr_opt >= round(entry + risk, 2) and trail_sl < entry:
-                        db.update_trailing_sl(tid, entry)
-                        broadcast_alert(f"🛡️ SL Trailed: {tsym}", f"Cost Trail: ₹{entry}", f"🛡️ <b>SL TRAILED TO COST</b>\n{tsym} | New SL: ₹{entry}")
-
+                    step_trail_check(tid, tsym, entry, sl, trail_sl, curr_opt)
                     if curr_opt <= trail_sl:
                         net = db.close_virtual_trade(tid, curr_opt, (curr_opt - entry) * qty)
                         broadcast_alert(f"🔴 SL Hit: {tsym}", f"Exit ₹{curr_opt} | Net P&L: ₹{net}", f"🔴 <b>SL HIT EXIT (DHAN)</b>\n{tsym} @ ₹{curr_opt}\nNet P&L: ₹{net}")
@@ -329,14 +313,13 @@ def anas_trading_loop():
                             if s not in cached_expiry or cached_expiry[s]["date"] != today_str:
                                 exp = dhan_bridge.get_nearest_expiry(s)
                                 cached_expiry[s] = {"date": today_str, "expiry": exp}
-
                             pdh, pdl = cached_pdh_pdl[s]["pdh"], cached_pdh_pdl[s]["pdl"]
                             expiry = cached_expiry[s]["expiry"]
                             is_exp = (expiry == today_str)
                             candles = dhan_bridge.get_intraday_candles(s, interval="5")
                             runtime_status["spots"][s] = candles[-1]["close"]
 
-                            if len(candles) < 26:
+                            if len(candles) < 36:
                                 continue
                             closed_candles = candles[:-1]
                             latest_ts = closed_candles[-1]["ts"]
@@ -357,12 +340,8 @@ def anas_trading_loop():
                                     elif opt_entry > 10:
                                         opt_sl, opt_target = calc_capped_sl_target(opt_entry, state["active_capital"], lot)
                                         opt_sym = f"{s} {strike} {'CE' if side == 'BUY_CE' else 'PE'}"
-                                        db.open_virtual_trade(opt_sym, s, side, f"{res['reason']} | PCR:{pcr}", opt_entry, opt_sl, opt_target, lot, is_exp, runtime_status["spots"][s])
-                                        broadcast_alert(
-                                            f"🟢 LIVE SIGNAL: {opt_sym}",
-                                            f"Entry ₹{opt_entry} | SL ₹{opt_sl} | Target ₹{opt_target} | PCR {pcr}",
-                                            f"🟢 <b>ANAS AI LIVE SIGNAL</b>\n<b>{opt_sym}</b> {'⚠️ EXPIRY' if is_exp else ''}\nEntry: ₹{opt_entry} | SL: ₹{opt_sl} | Target: ₹{opt_target}\nPCR: {pcr} | Setup: {res['reason']}"
-                                        )
+                                        db.open_virtual_trade(opt_sym, s, side, f"[DHAN] {res['reason']} | PCR:{pcr}", opt_entry, opt_sl, opt_target, lot, is_exp, runtime_status["spots"][s])
+                                        broadcast_alert(f"🟢 LIVE SIGNAL: {opt_sym}", f"Entry ₹{opt_entry} | SL ₹{opt_sl} | Target ₹{opt_target} | PCR {pcr}", f"🟢 <b>ANAS AI LIVE SIGNAL</b>\n<b>{opt_sym}</b> {'⚠️ EXPIRY' if is_exp else ''}\nEntry: ₹{opt_entry} | SL: ₹{opt_sl} | Target: ₹{opt_target}\nPCR: {pcr} | Setup: {res['reason']}")
                                         break
                 time.sleep(5)
                 continue
@@ -410,11 +389,8 @@ self.addEventListener('push', event => {
   try { data = event.data.json(); } catch (e) {}
   event.waitUntil(
     self.registration.showNotification(data.title, {
-      body: data.body,
-      icon: '/icon-192.png',
-      badge: '/icon-192.png',
-      vibrate: [250, 100, 250],
-      requireInteraction: true
+      body: data.body, icon: '/icon-192.png', badge: '/icon-192.png',
+      vibrate: [250, 100, 250], requireInteraction: true
     })
   );
 });
@@ -453,31 +429,21 @@ def api_state():
     today_pnl = db.get_today_pnl()
     stats = db.get_analytics()
     trades = db.get_recent_trades(12)
-    t_list = []
-    for t in trades:
-        t_list.append({
-            "id": t[0], "symbol": t[1], "side": t[2], "setup": t[3],
-            "entry": float(t[4]), "trail_sl": float(t[5]),
-            "target": float(t[6]), "exit": float(t[7]) if t[7] is not None else None,
-            "pnl": float(t[8] or 0), "status": t[9]
-        })
+    t_list = [{
+        "id": t[0], "symbol": t[1], "side": t[2], "setup": t[3],
+        "entry": float(t[4]), "trail_sl": float(t[5]),
+        "target": float(t[6]), "exit": float(t[7]) if t[7] is not None else None,
+        "pnl": float(t[8] or 0), "status": t[9]
+    } for t in trades]
     sym = state["active_symbol"]
     spot_txt = f"N:{runtime_status['spots']['NIFTY']} | BN:{runtime_status['spots']['BANKNIFTY']} | S:{runtime_status['spots']['SENSEX']}" if sym == "ALL" else str(runtime_status["spots"].get(sym, 0))
     return jsonify({
-        "symbol": sym,
-        "spot_txt": spot_txt,
-        "mode": state["mode"],
-        "kill_switch": state["kill_switch"],
-        "is_expiry": runtime_status["is_expiry"],
-        "dhan_ok": dhan_bridge.is_dhan_configured(),
-        "brain": runtime_status["last_msg"],
-        "capital": state["active_capital"],
-        "vault": state["safe_vault"],
-        "today_pnl": today_pnl,
-        "wins": stats["wins"],
-        "total": stats["total"],
-        "win_rate": stats["win_rate"],
-        "trades": t_list
+        "symbol": sym, "spot_txt": spot_txt, "mode": state["mode"],
+        "kill_switch": state["kill_switch"], "is_expiry": runtime_status["is_expiry"],
+        "dhan_ok": dhan_bridge.is_dhan_configured(), "brain": runtime_status["last_msg"],
+        "capital": state["active_capital"], "vault": state["safe_vault"],
+        "today_pnl": today_pnl, "wins": stats["wins"], "total": stats["total"],
+        "win_rate": stats["win_rate"], "trades": t_list
     })
 
 @app.route("/")
@@ -485,7 +451,7 @@ def dashboard():
     return """<!DOCTYPE html>
 <html>
 <head>
-  <title>ANAS AI - Quant Pro v5.3</title>
+  <title>ANAS AI - Mature Quant v6.0</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
   <meta name="theme-color" content="#0b0f19">
   <meta name="mobile-web-app-capable" content="yes">
@@ -505,7 +471,7 @@ def dashboard():
   </style>
 </head>
 <body>
-  <h2 style="margin:4px 0 6px 0;">⚡ ANAS AI <span style="font-size:12px;color:#38bdf8;">QUANT v5.3</span></h2>
+  <h2 style="margin:4px 0 6px 0;">⚡ ANAS AI <span style="font-size:12px;color:#38bdf8;">QUANT v6.0</span></h2>
   <p id="status-line" style="font-size:12px;margin:4px 0;">Loading live engine...</p>
   <p id="brain-line" style="font-size:11px;color:#94a3b8;margin:4px 0 12px 0;">Connecting...</p>
 
@@ -517,11 +483,12 @@ def dashboard():
   </div>
 
   <div style="margin-bottom:10px;">
-    <button onclick="enableDirectPush()" class="btn" style="background:#8b5cf6;">🔔 ENABLE DIRECT PUSH</button>
+    <button onclick="enableDirectPush()" class="btn" style="background:#8b5cf6;">🔔 ENABLE PUSH</button>
     <a href="/test-push" class="btn" style="background:#ec4899;">🔔 TEST PUSH</a>
     <a href="/kill/on" class="btn" style="background:#dc2626;">🚨 KILL SWITCH</a>
     <a href="/kill/off" class="btn" style="background:#16a34a;">🔓 UNLOCK</a>
     <a href="/ai-brief" class="btn" style="background:#6366f1;">🧠 GEMINI BRIEF</a>
+    <a href="/ai-audit" class="btn" style="background:#7c3aed;">📊 AI TRADE AUDIT</a>
     <a href="/test-telegram" class="btn" style="background:#0ea5e9;">📩 TEST TELEGRAM</a>
     <a href="/test-dhan" class="btn" style="background:#f59e0b;color:#000;">📡 TEST DHAN</a>
   </div>
@@ -564,65 +531,43 @@ def dashboard():
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js').catch(() => {});
     }
-
     function playBeep() {
       try {
         const ctx = new (window.AudioContext || window.webkitAudioContext)();
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
-        osc.type = 'sine';
-        osc.frequency.value = 880;
+        osc.type = 'sine'; osc.frequency.value = 880;
         gain.gain.setValueAtTime(0.15, ctx.currentTime);
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start();
-        osc.stop(ctx.currentTime + 0.18);
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.start(); osc.stop(ctx.currentTime + 0.18);
       } catch (e) {}
     }
-
     function urlB64ToUint8(b64) {
       const pad = '='.repeat((4 - b64.length % 4) % 4);
       const base64 = (b64 + pad).replace(/-/g, '+').replace(/_/g, '/');
       const raw = atob(base64);
       return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
     }
-
     async function enableDirectPush() {
       const msgEl = document.getElementById('push-msg');
       try {
         if (!('Notification' in window) || !('serviceWorker' in navigator)) {
-          msgEl.textContent = '❌ Is browser me push support nahi hai (Chrome use karein).';
-          return;
+          msgEl.textContent = '❌ Chrome browser use karein.'; return;
         }
         const perm = await Notification.requestPermission();
-        if (perm !== 'granted') {
-          msgEl.textContent = '❌ Notification permission allow nahi ki gayi.';
-          return;
-        }
+        if (perm !== 'granted') { msgEl.textContent = '❌ Permission denied.'; return; }
         const reg = await navigator.serviceWorker.ready;
-        const kr = await fetch('/api/vapid-public');
-        const kd = await kr.json();
-        const sub = await reg.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: urlB64ToUint8(kd.publicKey)
-        });
-        await fetch('/api/push-subscribe', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(sub)
-        });
+        const kd = await (await fetch('/api/vapid-public')).json();
+        const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToUint8(kd.publicKey) });
+        await fetch('/api/push-subscribe', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(sub) });
         playBeep();
         msgEl.textContent = '✅ Direct Phone Push ON ho gaya!';
-      } catch (e) {
-        msgEl.textContent = '❌ Push Error: ' + e.message;
-      }
+      } catch (e) { msgEl.textContent = '❌ Push Error: ' + e.message; }
     }
-
     let lastTopTradeKey = null;
     async function refreshState() {
       try {
-        const r = await fetch('/api/state');
-        const d = await r.json();
+        const d = await (await fetch('/api/state')).json();
         const kill = d.kill_switch ? '🔴 LOCKED' : '🟢 SCANNING';
         const dhan = d.dhan_ok ? '✅ Token OK' : '⏳ Token Pending';
         const exp = d.is_expiry ? '⚠️ EXPIRY' : 'Normal';
@@ -635,23 +580,15 @@ def dashboard():
         pnlEl.textContent = '₹' + d.today_pnl.toLocaleString('en-IN', {minimumFractionDigits:2});
         pnlEl.style.color = d.today_pnl >= 0 ? '#22c55e' : '#ef4444';
         document.getElementById('winrate').textContent = `${d.win_rate}% (${d.wins}/${d.total})`;
-
         if (d.trades.length > 0) {
           const topKey = d.trades[0].id + '_' + d.trades[0].status;
           if (lastTopTradeKey && lastTopTradeKey !== topKey) playBeep();
           lastTopTradeKey = topKey;
         }
-
         let rows = '';
         for (const t of d.trades) {
           const c = t.pnl >= 0 ? '#22c55e' : '#ef4444';
-          rows += `<tr>
-            <td>${t.symbol}</td><td>${t.side}</td><td>${t.setup}</td>
-            <td>₹${t.entry}</td><td>₹${t.trail_sl}</td><td>₹${t.target}</td>
-            <td>${t.exit !== null ? '₹'+t.exit : '-'}</td>
-            <td style="color:${c};font-weight:bold;">₹${t.pnl}</td>
-            <td>${t.status}</td>
-          </tr>`;
+          rows += `<tr><td>${t.symbol}</td><td>${t.side}</td><td>${t.setup}</td><td>₹${t.entry}</td><td>₹${t.trail_sl}</td><td>₹${t.target}</td><td>${t.exit !== null ? '₹'+t.exit : '-'}</td><td style="color:${c};font-weight:bold;">₹${t.pnl}</td><td>${t.status}</td></tr>`;
         }
         document.getElementById('trades-body').innerHTML = rows;
       } catch (e) {}
@@ -683,42 +620,26 @@ def set_mode(m):
 def set_sym(s):
     if s in ("NIFTY", "BANKNIFTY", "SENSEX", "ALL"):
         db.update_setting("active_symbol", s)
-        try:
-            st = db.get_system_state()
-            if st["mode"] == "PAPER_REAL":
-                targets = ALL_INDICES if s == "ALL" else [s]
-                for idx in targets:
-                    spot, _, _, _, _, _ = free_market.get_free_market_data(idx)
-                    runtime_status["spots"][idx] = spot
-        except Exception as e:
-            runtime_status["last_msg"] = f"Switch Error: {e}"
+        sync_real_spots_once()
     return redirect("/")
 
 @app.route("/update-token", methods=["POST"])
 def update_token():
-    pin = request.form.get("pin", "")
-    expected = os.getenv("ADMIN_PIN", "2026")
-    if pin != expected:
+    if request.form.get("pin", "") != os.getenv("ADMIN_PIN", "2026"):
         return "<body style='background:#0b0f19;color:#ef4444;padding:20px;font-family:sans-serif;'>❌ Galat PIN!<br><a href='/' style='color:#38bdf8;'>← Back</a></body>"
-    tok = request.form.get("token", "").strip()
-    db.update_setting("dhan_token", tok)
+    db.update_setting("dhan_token", request.form.get("token", "").strip())
     return redirect("/")
 
 @app.route("/reset-sim", methods=["POST"])
 def reset_sim():
-    pin = request.form.get("pin", "")
-    expected = os.getenv("ADMIN_PIN", "2026")
-    if pin != expected:
+    if request.form.get("pin", "") != os.getenv("ADMIN_PIN", "2026"):
         return "<body style='background:#0b0f19;color:#ef4444;padding:20px;font-family:sans-serif;'>❌ Galat PIN!<br><a href='/' style='color:#38bdf8;'>← Back</a></body>"
     db.reset_paper_data()
     return redirect("/")
 
 @app.route("/test-push")
 def test_push():
-    sent, msg = push_service.send_web_push(
-        "⚡ ANAS AI Direct Push!",
-        "Phone lock hone par bhi aapko aise hi live Entry/SL/Target alerts milenge!"
-    )
+    sent, msg = push_service.send_web_push("⚡ ANAS AI Direct Push!", "Phone lock hone par bhi live alerts milenge!")
     color = "#22c55e" if sent > 0 else "#f59e0b"
     return f"<body style='background:#0b0f19;color:{color};font-family:sans-serif;padding:20px;'><h2>🔔 Direct App Push Test</h2><p>{msg}</p><a href='/' style='color:#38bdf8;'>← Back</a></body>"
 
@@ -731,20 +652,25 @@ def test_telegram():
 @app.route("/test-dhan")
 def test_dhan():
     if not dhan_bridge.is_dhan_configured():
-        return "<body style='background:#0b0f19;color:#f59e0b;font-family:sans-serif;padding:20px;'><h2>📡 Dhan Test</h2><p>Dhan Client ID (Render Env) ya Access Token (Dashboard Token Box) abhi pending hai.</p><a href='/' style='color:#38bdf8;'>← Back</a></body>"
+        return "<body style='background:#0b0f19;color:#f59e0b;font-family:sans-serif;padding:20px;'><h2>📡 Dhan Test</h2><p>Dhan Client ID ya Access Token pending hai.</p><a href='/' style='color:#38bdf8;'>← Back</a></body>"
     try:
         pdh, pdl = dhan_bridge.get_pdh_pdl("NIFTY")
         exp = dhan_bridge.get_nearest_expiry("NIFTY")
         oc = dhan_bridge.get_option_chain_snapshot("NIFTY", exp)
-        spot = oc.get("last_price")
-        return f"<body style='background:#0b0f19;color:#22c55e;font-family:sans-serif;padding:20px;'><h2>✅ Dhan Data API Connected!</h2><p>NIFTY Spot: <b>{spot}</b><br>PDH: <b>{pdh}</b> | PDL: <b>{pdl}</b><br>Nearest Expiry: <b>{exp}</b></p><a href='/' style='color:#38bdf8;'>← Back</a></body>"
+        return f"<body style='background:#0b0f19;color:#22c55e;font-family:sans-serif;padding:20px;'><h2>✅ Dhan Data API Connected!</h2><p>NIFTY Spot: <b>{oc.get('last_price')}</b><br>PDH: <b>{pdh}</b> | PDL: <b>{pdl}</b><br>Nearest Expiry: <b>{exp}</b></p><a href='/' style='color:#38bdf8;'>← Back</a></body>"
     except Exception as e:
         return f"<body style='background:#0b0f19;color:#ef4444;font-family:sans-serif;padding:20px;'><h2>❌ Dhan API Error</h2><pre>{e}</pre><a href='/' style='color:#38bdf8;'>← Back</a></body>"
 
 @app.route("/ai-brief")
 def ai_brief():
     brief = generate_premarket_brief()
-    return f"<body style='background:#0b0f19;color:#fff;font-family:sans-serif;padding:20px;'><h2>🧠 Gemini Live News & Pre-Market Brief</h2><pre style='white-space:pre-wrap;font-size:15px;'>{brief}</pre><br><a href='/' style='color:#38bdf8;'>← Back</a></body>"
+    return f"<body style='background:#0b0f19;color:#fff;font-family:sans-serif;padding:20px;'><h2>🧠 Gemini Live News Brief</h2><pre style='white-space:pre-wrap;font-size:15px;'>{brief}</pre><br><a href='/' style='color:#38bdf8;'>← Back</a></body>"
+
+@app.route("/ai-audit")
+def ai_audit():
+    trades = db.get_recent_trades(12)
+    report = audit_todays_trades(trades)
+    return f"<body style='background:#0b0f19;color:#fff;font-family:sans-serif;padding:20px;'><h2>📊 Gemini Trade Coach Audit</h2><pre style='white-space:pre-wrap;font-size:15px;'>{report}</pre><br><a href='/' style='color:#38bdf8;'>← Back</a></body>"
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", 8000)), use_reloader=False)

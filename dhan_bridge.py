@@ -49,7 +49,7 @@ def get_pdh_pdl(symbol: str):
 def get_intraday_candles(symbol: str, interval: str = "5"):
     cfg = INSTRUMENTS[symbol]
     ist = datetime.utcnow() + timedelta(hours=5, minutes=30)
-    from_d = (ist - timedelta(days=4)).strftime("%Y-%m-%d 09:15:00")
+    from_d = (ist - timedelta(days=5)).strftime("%Y-%m-%d 09:15:00")
     to_d = ist.strftime("%Y-%m-%d %H:%M:%S")
     payload = {
         "securityId": cfg["id"],
@@ -74,7 +74,7 @@ def get_intraday_candles(symbol: str, interval: str = "5"):
             "low": float(data["low"][i]),
             "close": float(data["close"][i])
         })
-    return candles[-60:]
+    return candles[-150:]
 
 def get_nearest_expiry(symbol: str):
     cfg = INSTRUMENTS[symbol]
@@ -101,7 +101,6 @@ def pick_pro_strike_and_pcr(symbol: str, oc_data: dict, side: str, is_expiry: bo
     step = cfg["step"]
     spot = float(oc_data.get("last_price", 0))
     atm = int(round(spot / step) * step)
-
     target_strike = ((atm - step) if side == "BUY_CE" else (atm + step)) if is_expiry else atm
 
     oc_map = {}

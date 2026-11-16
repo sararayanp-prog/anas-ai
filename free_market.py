@@ -1,3 +1,4 @@
+import time
 import requests
 from datetime import datetime, timedelta
 
@@ -7,7 +8,13 @@ YF_MAP = {
     "SENSEX": {"ticker": "^BSESN", "step": 100, "lot": 20},
 }
 
-def get_free_market_data(symbol: str):
+_cache = {}
+
+def get_free_market_data(symbol: str, force: bool = False):
+    now_ts = time.time()
+    if not force and symbol in _cache and (now_ts - _cache[symbol]["fetched_at"]) < 45:
+        return _cache[symbol]["data"]
+
     cfg = YF_MAP[symbol]
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
     data = None
@@ -25,7 +32,7 @@ def get_free_market_data(symbol: str):
             last_err = str(e)
 
     if not data or not data.get("chart", {}).get("result"):
-        raise ValueError(f"Market Feed Error ({symbol}): {last_err}")
+        raise ValueError(f"Feed Error ({symbol}): {last_err}")
 
     res = data["chart"]["result"][0]
     meta = res["meta"]
@@ -60,4 +67,7 @@ def get_free_market_data(symbol: str):
     pdh = max(b["high"] for b in prev_day_bars[last_prev_date])
     pdl = min(b["low"] for b in prev_day_bars[last_prev_date])
     spot = round(float(meta.get("regularMarketPrice") or candles[-1]["close"]), 2)
-    return spot, pdh, pdl, candles[-60:], cfg["step"], cfg["lot"]
+
+    out = (spot, pdh, pdl, candles[-150:], cfg["step"], cfg["lot"])
+    _cache[symbol] = {"fetched_at": now_ts, "data": out}
+    return out
