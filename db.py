@@ -43,17 +43,22 @@ def init_db():
             active_symbol VARCHAR(20) DEFAULT 'ALL',
             dhan_token TEXT DEFAULT '',
             last_brief_date VARCHAR(20) DEFAULT '',
+            last_token_date VARCHAR(20) DEFAULT '',
             vapid_public TEXT DEFAULT '',
             vapid_private TEXT DEFAULT '',
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
-    cur.execute("ALTER TABLE system_config ADD COLUMN IF NOT EXISTS active_symbol VARCHAR(20) DEFAULT 'ALL'")
-    cur.execute("ALTER TABLE system_config ADD COLUMN IF NOT EXISTS dhan_token TEXT DEFAULT ''")
-    cur.execute("ALTER TABLE system_config ADD COLUMN IF NOT EXISTS last_brief_date VARCHAR(20) DEFAULT ''")
-    cur.execute("ALTER TABLE system_config ADD COLUMN IF NOT EXISTS vapid_public TEXT DEFAULT ''")
-    cur.execute("ALTER TABLE system_config ADD COLUMN IF NOT EXISTS vapid_private TEXT DEFAULT ''")
-    cur.execute("ALTER TABLE system_config ADD COLUMN IF NOT EXISTS kill_baseline NUMERIC(12, 2) DEFAULT 0.00")
+    for col in (
+        "active_symbol VARCHAR(20) DEFAULT 'ALL'",
+        "dhan_token TEXT DEFAULT ''",
+        "last_brief_date VARCHAR(20) DEFAULT ''",
+        "last_token_date VARCHAR(20) DEFAULT ''",
+        "vapid_public TEXT DEFAULT ''",
+        "vapid_private TEXT DEFAULT ''",
+        "kill_baseline NUMERIC(12, 2) DEFAULT 0.00"
+    ):
+        cur.execute(f"ALTER TABLE system_config ADD COLUMN IF NOT EXISTS {col}")
     cur.execute("INSERT INTO system_config (id) VALUES (1) ON CONFLICT (id) DO NOTHING")
     cur.execute("""
         CREATE TABLE IF NOT EXISTS trades_journal (
@@ -135,26 +140,21 @@ def get_system_state():
     cur.execute("""
         SELECT trading_mode, active_capital, safe_vault_profit,
                daily_max_loss_pct, kill_switch, market_bias, active_symbol,
-               dhan_token, last_brief_date, kill_baseline
+               dhan_token, last_brief_date, kill_baseline, last_token_date
         FROM system_config WHERE id = 1
     """)
     row = cur.fetchone()
     conn.close()
     return {
-        "mode": row[0],
-        "active_capital": float(row[1]),
-        "safe_vault": float(row[2]),
-        "max_loss_pct": float(row[3]),
-        "kill_switch": bool(row[4]),
-        "market_bias": row[5],
-        "active_symbol": row[6] or "ALL",
-        "dhan_token": (row[7] or "").strip(),
-        "last_brief_date": row[8] or "",
-        "kill_baseline": float(row[9] or 0)
+        "mode": row[0], "active_capital": float(row[1]), "safe_vault": float(row[2]),
+        "max_loss_pct": float(row[3]), "kill_switch": bool(row[4]), "market_bias": row[5],
+        "active_symbol": row[6] or "ALL", "dhan_token": (row[7] or "").strip(),
+        "last_brief_date": row[8] or "", "kill_baseline": float(row[9] or 0),
+        "last_token_date": row[10] or ""
     }
 
 def update_setting(field: str, value):
-    allowed = ("kill_switch", "trading_mode", "active_symbol", "dhan_token", "last_brief_date", "kill_baseline")
+    allowed = ("kill_switch", "trading_mode", "active_symbol", "dhan_token", "last_brief_date", "kill_baseline", "last_token_date")
     if field not in allowed:
         return
     conn = get_conn()
@@ -174,11 +174,7 @@ def reset_paper_data():
     conn = get_conn()
     cur = conn.cursor()
     cur.execute("DELETE FROM trades_journal")
-    cur.execute("""
-        UPDATE system_config
-        SET active_capital = 50000.00, safe_vault_profit = 0.00, kill_switch = FALSE, kill_baseline = 0.00, updated_at = NOW()
-        WHERE id = 1
-    """)
+    cur.execute("UPDATE system_config SET active_capital = 50000.00, safe_vault_profit = 0.00, kill_switch = FALSE, kill_baseline = 0.00, updated_at = NOW() WHERE id = 1")
     conn.commit()
     conn.close()
 
@@ -186,44 +182,50 @@ def get_today_risk_stats():
     conn = get_conn()
     cur = conn.cursor()
     cur.execute("""
-        SELECT
-            COUNT(*),
-            COUNT(*) FILTER (WHERE status = 'CLOSED' AND pnl_net < 0),
-            MAX(closed_at) FILTER (WHERE status = 'CLOSED' AND pnl_net < 0)
+        SELECT COUNT(*), COUNT(*) FILTER (WHERE status = 'CLOSED' AND pnl_net < 0),
+               MAX(closed_at) FILTER (WHERE status = 'CLOSED' AND pnl_net < 0)
         FROM trades_journal
         WHERE DATE(opened_at + INTERVAL '330 minutes') = DATE(NOW() + INTERVAL '330 minutes')
     """)
     row = cur.fetchone()
     conn.close()
-    return {
-        "trades_today": int(row[0] or 0),
-        "losses_today": int(row[1] or 0),
-        "last_loss_at": row[2]
-    }
+    return {"trades_today": int(row[0] or 0), "losses_today": int(row[1] or 0), "last_loss_at": row[2]}
 
 def get_analytics():
     conn = get_conn()
     cur = conn.cursor()
     cur.execute("""
-        SELECT
-            COUNT(*) FILTER (WHERE status = 'CLOSED'),
-            COUNT(*) FILTER (WHERE status = 'CLOSED' AND pnl_net > 0),
-            COALESCE(SUM(pnl_net) FILTER (WHERE status = 'CLOSED'), 0)
+        SELECT COUNT(*) FILTER (WHERE status = 'CLOSED'),
+               COUNT(*) FILTER (WHERE status = 'CLOSED' AND pnl_net > 0),
+               COALESCE(SUM(pnl_net) FILTER (WHERE status = 'CLOSED'), 0)
         FROM trades_journal
     """)
     row = cur.fetchone()
     conn.close()
-    total = int(row[0] or 0)
-    wins = int(row[1] or 0)
-    win_rate = round((wins / total) * 100.0, 1) if total > 0 else 0.0
-    return {"total": total, "wins": wins, "losses": total - wins, "win_rate": win_rate, "total_pnl": float(row[2] or 0)}
+    total, wins = int(row[0] or 0), int(row[1] or 0)
+    return {"total": total, "wins": wins, "losses": total - wins, "win_rate": round((wins / total) * 100.0, 1) if total > 0 else 0.0, "total_pnl": float(row[2] or 0)}
+
+def get_breakdown_analytics():
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT instrument, COUNT(*), COUNT(*) FILTER (WHERE pnl_net > 0), COALESCE(SUM(pnl_net), 0)
+        FROM trades_journal WHERE status = 'CLOSED' GROUP BY instrument
+    """)
+    by_idx = cur.fetchall()
+    cur.execute("""
+        SELECT SPLIT_PART(setup_reason, '|', 1), COUNT(*), COUNT(*) FILTER (WHERE pnl_net > 0), COALESCE(SUM(pnl_net), 0)
+        FROM trades_journal WHERE status = 'CLOSED' GROUP BY 1
+    """)
+    by_setup = cur.fetchall()
+    conn.close()
+    return by_idx, by_setup
 
 def get_today_pnl():
     conn = get_conn()
     cur = conn.cursor()
     cur.execute("""
-        SELECT COALESCE(SUM(pnl_net), 0)
-        FROM trades_journal
+        SELECT COALESCE(SUM(pnl_net), 0) FROM trades_journal
         WHERE status = 'CLOSED' AND DATE(opened_at + INTERVAL '330 minutes') = DATE(NOW() + INTERVAL '330 minutes')
     """)
     val = float(cur.fetchone()[0])
@@ -248,7 +250,7 @@ def get_open_trades():
     cur = conn.cursor()
     cur.execute("""
         SELECT id, symbol, instrument, side, setup_reason, entry_price,
-               stop_loss, target_price, trailing_sl, qty, is_expiry_day, spot_ref
+               stop_loss, target_price, trailing_sl, qty, is_expiry_day, spot_ref, opened_at
         FROM trades_journal WHERE status = 'OPEN'
     """)
     rows = cur.fetchall()
@@ -266,24 +268,11 @@ def close_virtual_trade(trade_id, exit_price, gross_pnl):
     net_pnl = round(gross_pnl - 55.0, 2)
     conn = get_conn()
     cur = conn.cursor()
-    cur.execute("""
-        UPDATE trades_journal
-        SET exit_price = %s, pnl_net = %s, status = 'CLOSED', closed_at = NOW()
-        WHERE id = %s
-    """, (exit_price, net_pnl, trade_id))
-
+    cur.execute("UPDATE trades_journal SET exit_price = %s, pnl_net = %s, status = 'CLOSED', closed_at = NOW() WHERE id = %s", (exit_price, net_pnl, trade_id))
     if net_pnl > 0:
-        to_vault = round(net_pnl * 0.40, 2)
-        to_capital = round(net_pnl * 0.60, 2)
-        cur.execute("""
-            UPDATE system_config
-            SET safe_vault_profit = safe_vault_profit + %s,
-                active_capital = active_capital + %s
-            WHERE id = 1
-        """, (to_vault, to_capital))
+        cur.execute("UPDATE system_config SET safe_vault_profit = safe_vault_profit + %s, active_capital = active_capital + %s WHERE id = 1", (round(net_pnl * 0.40, 2), round(net_pnl * 0.60, 2)))
     else:
         cur.execute("UPDATE system_config SET active_capital = active_capital + %s WHERE id = 1", (net_pnl,))
-
     conn.commit()
     conn.close()
     return net_pnl
@@ -296,6 +285,18 @@ def get_recent_trades(limit=12):
                target_price, exit_price, pnl_net, status, opened_at
         FROM trades_journal ORDER BY id DESC LIMIT %s
     """, (limit,))
+    rows = cur.fetchall()
+    conn.close()
+    return rows
+
+def get_all_trades_export():
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT id, symbol, instrument, side, setup_reason, entry_price, stop_loss,
+               target_price, exit_price, qty, pnl_net, status, is_expiry_day, opened_at, closed_at
+        FROM trades_journal ORDER BY id DESC
+    """)
     rows = cur.fetchall()
     conn.close()
     return rows
