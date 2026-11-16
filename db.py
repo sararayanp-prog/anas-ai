@@ -170,6 +170,25 @@ def reset_paper_data():
     conn.commit()
     conn.close()
 
+def get_today_risk_stats():
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT
+            COUNT(*),
+            COUNT(*) FILTER (WHERE status = 'CLOSED' AND pnl_net < 0),
+            MAX(closed_at) FILTER (WHERE status = 'CLOSED' AND pnl_net < 0)
+        FROM trades_journal
+        WHERE DATE(opened_at + INTERVAL '330 minutes') = DATE(NOW() + INTERVAL '330 minutes')
+    """)
+    row = cur.fetchone()
+    conn.close()
+    return {
+        "trades_today": int(row[0] or 0),
+        "losses_today": int(row[1] or 0),
+        "last_loss_at": row[2]
+    }
+
 def get_analytics():
     conn = get_conn()
     cur = conn.cursor()

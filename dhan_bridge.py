@@ -49,7 +49,7 @@ def get_pdh_pdl(symbol: str):
 def get_intraday_candles(symbol: str, interval: str = "5"):
     cfg = INSTRUMENTS[symbol]
     ist = datetime.utcnow() + timedelta(hours=5, minutes=30)
-    from_d = (ist - timedelta(days=3)).strftime("%Y-%m-%d 09:15:00")
+    from_d = (ist - timedelta(days=4)).strftime("%Y-%m-%d 09:15:00")
     to_d = ist.strftime("%Y-%m-%d %H:%M:%S")
     payload = {
         "securityId": cfg["id"],
@@ -64,17 +64,17 @@ def get_intraday_candles(symbol: str, interval: str = "5"):
     data = r.json()
     if "close" not in data or not data["close"]:
         raise ValueError(f"Intraday Error: {data}")
+    ts_list = data.get("timestamp") or list(range(len(data["close"])))
     candles = []
     for i in range(len(data["close"])):
-        vol = data["volume"][i] if "volume" in data and data["volume"][i] else 1000
         candles.append({
+            "ts": ts_list[i],
             "open": float(data["open"][i]),
             "high": float(data["high"][i]),
             "low": float(data["low"][i]),
-            "close": float(data["close"][i]),
-            "volume": float(vol)
+            "close": float(data["close"][i])
         })
-    return candles[-50:]
+    return candles[-60:]
 
 def get_nearest_expiry(symbol: str):
     cfg = INSTRUMENTS[symbol]
@@ -119,9 +119,9 @@ def pick_pro_strike_and_pcr(symbol: str, oc_data: dict, side: str, is_expiry: bo
     ltp = float(leg.get("last_price") or 0)
 
     oi_ok = True
-    if side == "BUY_CE" and pcr < 0.60:
+    if side == "BUY_CE" and pcr < 0.70:
         oi_ok = False
-    elif side == "BUY_PE" and pcr > 1.40:
+    elif side == "BUY_PE" and pcr > 1.30:
         oi_ok = False
 
     return target_strike, ltp, pcr, oi_ok, cfg["lot"]
