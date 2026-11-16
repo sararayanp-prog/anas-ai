@@ -38,8 +38,9 @@ def init_db():
             safe_vault_profit NUMERIC(12, 2) DEFAULT 0.00,
             daily_max_loss_pct NUMERIC(5, 2) DEFAULT 2.00,
             kill_switch BOOLEAN DEFAULT FALSE,
+            kill_baseline NUMERIC(12, 2) DEFAULT 0.00,
             market_bias VARCHAR(30) DEFAULT 'NEUTRAL',
-            active_symbol VARCHAR(20) DEFAULT 'NIFTY',
+            active_symbol VARCHAR(20) DEFAULT 'ALL',
             dhan_token TEXT DEFAULT '',
             last_brief_date VARCHAR(20) DEFAULT '',
             vapid_public TEXT DEFAULT '',
@@ -47,11 +48,12 @@ def init_db():
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
-    cur.execute("ALTER TABLE system_config ADD COLUMN IF NOT EXISTS active_symbol VARCHAR(20) DEFAULT 'NIFTY'")
+    cur.execute("ALTER TABLE system_config ADD COLUMN IF NOT EXISTS active_symbol VARCHAR(20) DEFAULT 'ALL'")
     cur.execute("ALTER TABLE system_config ADD COLUMN IF NOT EXISTS dhan_token TEXT DEFAULT ''")
     cur.execute("ALTER TABLE system_config ADD COLUMN IF NOT EXISTS last_brief_date VARCHAR(20) DEFAULT ''")
     cur.execute("ALTER TABLE system_config ADD COLUMN IF NOT EXISTS vapid_public TEXT DEFAULT ''")
     cur.execute("ALTER TABLE system_config ADD COLUMN IF NOT EXISTS vapid_private TEXT DEFAULT ''")
+    cur.execute("ALTER TABLE system_config ADD COLUMN IF NOT EXISTS kill_baseline NUMERIC(12, 2) DEFAULT 0.00")
     cur.execute("INSERT INTO system_config (id) VALUES (1) ON CONFLICT (id) DO NOTHING")
     cur.execute("""
         CREATE TABLE IF NOT EXISTS trades_journal (
@@ -133,7 +135,7 @@ def get_system_state():
     cur.execute("""
         SELECT trading_mode, active_capital, safe_vault_profit,
                daily_max_loss_pct, kill_switch, market_bias, active_symbol,
-               dhan_token, last_brief_date
+               dhan_token, last_brief_date, kill_baseline
         FROM system_config WHERE id = 1
     """)
     row = cur.fetchone()
@@ -145,18 +147,26 @@ def get_system_state():
         "max_loss_pct": float(row[3]),
         "kill_switch": bool(row[4]),
         "market_bias": row[5],
-        "active_symbol": row[6] or "NIFTY",
+        "active_symbol": row[6] or "ALL",
         "dhan_token": (row[7] or "").strip(),
-        "last_brief_date": row[8] or ""
+        "last_brief_date": row[8] or "",
+        "kill_baseline": float(row[9] or 0)
     }
 
 def update_setting(field: str, value):
-    allowed = ("kill_switch", "trading_mode", "active_symbol", "dhan_token", "last_brief_date")
+    allowed = ("kill_switch", "trading_mode", "active_symbol", "dhan_token", "last_brief_date", "kill_baseline")
     if field not in allowed:
         return
     conn = get_conn()
     cur = conn.cursor()
     cur.execute(f"UPDATE system_config SET {field} = %s, updated_at = NOW() WHERE id = 1", (value,))
+    conn.commit()
+    conn.close()
+
+def unlock_kill_switch(current_pnl: float):
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("UPDATE system_config SET kill_switch = FALSE, kill_baseline = %s, updated_at = NOW() WHERE id = 1", (current_pnl,))
     conn.commit()
     conn.close()
 
@@ -166,7 +176,7 @@ def reset_paper_data():
     cur.execute("DELETE FROM trades_journal")
     cur.execute("""
         UPDATE system_config
-        SET active_capital = 50000.00, safe_vault_profit = 0.00, kill_switch = FALSE, updated_at = NOW()
+        SET active_capital = 50000.00, safe_vault_profit = 0.00, kill_switch = FALSE, kill_baseline = 0.00, updated_at = NOW()
         WHERE id = 1
     """)
     conn.commit()
