@@ -33,7 +33,7 @@ def init_db():
     cur.execute("""
         CREATE TABLE IF NOT EXISTS system_config (
             id INT PRIMARY KEY DEFAULT 1,
-            trading_mode VARCHAR(20) DEFAULT 'PAPER_SIM',
+            trading_mode VARCHAR(20) DEFAULT 'PAPER_REAL',
             active_capital NUMERIC(12, 2) DEFAULT 50000.00,
             safe_vault_profit NUMERIC(12, 2) DEFAULT 0.00,
             daily_max_loss_pct NUMERIC(5, 2) DEFAULT 2.00,
@@ -65,6 +65,7 @@ def init_db():
             target_price NUMERIC(10, 2) NOT NULL,
             trailing_sl NUMERIC(10, 2) NOT NULL,
             qty INT NOT NULL,
+            spot_ref NUMERIC(10, 2) DEFAULT 0.00,
             exit_price NUMERIC(10, 2),
             pnl_net NUMERIC(10, 2) DEFAULT 0.00,
             status VARCHAR(20) DEFAULT 'OPEN',
@@ -73,6 +74,7 @@ def init_db():
             closed_at TIMESTAMP
         )
     """)
+    cur.execute("ALTER TABLE trades_journal ADD COLUMN IF NOT EXISTS spot_ref NUMERIC(10, 2) DEFAULT 0.00")
     cur.execute("""
         CREATE TABLE IF NOT EXISTS push_subscriptions (
             id SERIAL PRIMARY KEY,
@@ -218,14 +220,14 @@ def get_today_pnl():
     conn.close()
     return val
 
-def open_virtual_trade(symbol, instrument, side, reason, entry, sl, target, qty, is_expiry):
+def open_virtual_trade(symbol, instrument, side, reason, entry, sl, target, qty, is_expiry, spot_ref=0.0):
     conn = get_conn()
     cur = conn.cursor()
     cur.execute("""
         INSERT INTO trades_journal
-        (symbol, instrument, side, setup_reason, entry_price, stop_loss, target_price, trailing_sl, qty, is_expiry_day)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id
-    """, (symbol, instrument, side, reason, entry, sl, target, sl, qty, is_expiry))
+        (symbol, instrument, side, setup_reason, entry_price, stop_loss, target_price, trailing_sl, qty, is_expiry_day, spot_ref)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id
+    """, (symbol, instrument, side, reason, entry, sl, target, sl, qty, is_expiry, spot_ref))
     trade_id = cur.fetchone()[0]
     conn.commit()
     conn.close()
@@ -236,7 +238,7 @@ def get_open_trades():
     cur = conn.cursor()
     cur.execute("""
         SELECT id, symbol, instrument, side, setup_reason, entry_price,
-               stop_loss, target_price, trailing_sl, qty, is_expiry_day
+               stop_loss, target_price, trailing_sl, qty, is_expiry_day, spot_ref
         FROM trades_journal WHERE status = 'OPEN'
     """)
     rows = cur.fetchall()
