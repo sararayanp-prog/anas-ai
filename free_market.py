@@ -9,14 +9,25 @@ YF_MAP = {
 
 def get_free_market_data(symbol: str):
     cfg = YF_MAP[symbol]
-    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{cfg['ticker']}"
-    r = requests.get(
-        url,
-        params={"interval": "5m", "range": "5d"},
-        headers={"User-Agent": "Mozilla/5.0"},
-        timeout=10
-    )
-    res = r.json()["chart"]["result"][0]
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+    data = None
+    last_err = None
+
+    for host in ("query1.finance.yahoo.com", "query2.finance.yahoo.com"):
+        try:
+            url = f"https://{host}/v8/finance/chart/{cfg['ticker']}"
+            r = requests.get(url, params={"interval": "5m", "range": "5d"}, headers=headers, timeout=10)
+            if r.status_code == 200:
+                data = r.json()
+                break
+            last_err = f"HTTP {r.status_code}"
+        except Exception as e:
+            last_err = str(e)
+
+    if not data or not data.get("chart", {}).get("result"):
+        raise ValueError(f"Market Feed Error ({symbol}): {last_err}")
+
+    res = data["chart"]["result"][0]
     meta = res["meta"]
     ts_list = res["timestamp"]
     q = res["indicators"]["quote"][0]
@@ -48,5 +59,5 @@ def get_free_market_data(symbol: str):
     last_prev_date = sorted(prev_day_bars.keys())[-1]
     pdh = max(b["high"] for b in prev_day_bars[last_prev_date])
     pdl = min(b["low"] for b in prev_day_bars[last_prev_date])
-    spot = float(meta.get("regularMarketPrice") or candles[-1]["close"])
+    spot = round(float(meta.get("regularMarketPrice") or candles[-1]["close"]), 2)
     return spot, pdh, pdl, candles[-60:], cfg["step"], cfg["lot"]

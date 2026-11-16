@@ -657,6 +657,15 @@ def set_mode(m):
 def set_sym(s):
     if s in ("NIFTY", "BANKNIFTY", "SENSEX"):
         db.update_setting("active_symbol", s)
+        defaults = {"NIFTY": 24450.0, "BANKNIFTY": 52000.0, "SENSEX": 79000.0}
+        runtime_status["spot"] = defaults[s]
+        try:
+            st = db.get_system_state()
+            if st["mode"] == "PAPER_REAL":
+                spot, _, _, _, _, _ = free_market.get_free_market_data(s)
+                runtime_status["spot"] = spot
+        except Exception as e:
+            runtime_status["last_msg"] = f"Switch Error: {e}"
     return redirect("/")
 
 @app.route("/update-token", methods=["POST"])
