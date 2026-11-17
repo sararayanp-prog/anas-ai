@@ -40,9 +40,12 @@ def broadcast_alert(title: str, body: str, tg_html: str):
     send_telegram(tg_html)
     push_service.send_web_push(title, body)
 
-def calc_capped_sl_target(opt_entry: float, active_capital: float, lot: int):
+def calc_capped_sl_target(opt_entry: float, active_capital: float, lot: int, today_pnl: float = 0.0):
     max_risk_rs = active_capital * 0.015
-    max_sl_pts = max(round(max_risk_rs / max(lot, 1), 2), 8.0)
+    # Profit-Protected Risk: Jab +600 profit me hon toh uske 55% se zyada risk nahi
+    if today_pnl >= 600.0:
+        max_risk_rs = min(max_risk_rs, max(today_pnl * 0.55, 400.0))
+    max_sl_pts = max(round(max_risk_rs / max(lot, 1), 2), 6.0)
     sl_pts = min(round(opt_entry * 0.18, 2), max_sl_pts)
     return round(opt_entry - sl_pts, 2), round(opt_entry + (sl_pts * 2.0), 2)
 
@@ -109,12 +112,14 @@ def sync_real_spots_once():
             except Exception:
                 pass
 
-def check_risk_limits():
+def check_risk_limits(today_pnl: float = 0.0):
     rstats = db.get_today_risk_stats()
-    if rstats["trades_today"] >= 3:
-        return False, "Max 3 Trades/Day Limit Reached"
+    if rstats["trades_today"] >= 5:
+        return False, "Max 5 Trades/Day Limit Reached"
     if rstats["losses_today"] >= 2:
         return False, "2-Loss Capital Shield Active"
+    if rstats["peak_today_pnl"] >= 600.0 and today_pnl <= rstats["peak_today_pnl"] * 0.45:
+        return False, f"Profit Shield Locked (Peak ₹{rstats['peak_today_pnl']} protected)"
     if rstats["last_loss_at"]:
         elapsed = (datetime.utcnow() - rstats["last_loss_at"].replace(tzinfo=None)).total_seconds()
         if elapsed < 900:
@@ -189,7 +194,7 @@ def anas_trading_loop():
                         broadcast_alert(f"💰 Target Hit: {tsym}", f"Exit ₹{target} | Net P&L: ₹{net}", f"💰 <b>TARGET</b>\n{tsym} @ ₹{target}\nNet: ₹{net}")
 
                 if len(open_trades) == 0:
-                    ok_risk, risk_msg = check_risk_limits()
+                    ok_risk, risk_msg = check_risk_limits(today_pnl)
                     if not ok_risk:
                         runtime_status["last_msg"] = risk_msg
                     else:
@@ -225,6 +230,11 @@ def anas_trading_loop():
                     theta_decay = round(mins_open * (0.25 if is_exp else 0.08), 2)
                     curr_opt = max(round(entry + (spot - spot_ref) * 0.5 * (1.0 if side == "BUY_CE" else -1.0) - theta_decay, 2), 5.0)
 
+                    # 45-Min Dead-Trade Time-Stop (-5% se +8% ke beech atke trade se exit)
+                    if mins_open >= 45.0 and (entry * 0.95) <= curr_opt <= (entry * 1.08):
+                        net = db.close_virtual_trade(tid, curr_opt, (curr_opt - entry) * qty)
+                        broadcast_alert(f"⌛ 45m Time-Stop: {tsym}", f"Dead Trade Exit ₹{curr_opt} | Net: ₹{net}", f"⌛ <b>45-MIN DEAD-TRADE EXIT</b>\n{tsym} @ ₹{curr_opt}\nNet P&L: ₹{net}")
+                        continue
                     # 3:15 PM MIS Auto Square-Off
                     if now_ist.time() >= dt_time(15, 15):
                         net = db.close_virtual_trade(tid, curr_opt, (curr_opt - entry) * qty)
@@ -240,7 +250,7 @@ def anas_trading_loop():
                         broadcast_alert(f"💰 Target Hit (REAL): {tsym}", f"Exit ₹{curr_opt} | Net P&L: ₹{net}", f"💰 <b>TARGET HIT (REAL)</b>\n{tsym} @ ₹{curr_opt}\nNet P&L: ₹{net}")
 
                 if len(open_trades) == 0:
-                    ok_risk, risk_msg = check_risk_limits()
+                    ok_risk, risk_msg = check_risk_limits(today_pnl)
                     if not ok_risk:
                         runtime_status["last_msg"] = risk_msg
                     else:
@@ -260,7 +270,7 @@ def anas_trading_loop():
                                 if res["signal"] in ("BUY_CE", "BUY_PE"):
                                     side = res["signal"]
                                     opt_entry = 140.0
-                                    opt_sl, opt_target = calc_capped_sl_target(opt_entry, state["active_capital"], lot)
+                                    opt_sl, opt_target = calc_capped_sl_target(opt_entry, state["active_capital"], lot, today_pnl)
                                     opt_sym = f"{s} {int(round(spot / step) * step)} {'CE' if side == 'BUY_CE' else 'PE'}"
                                     db.open_virtual_trade(opt_sym, s, side, f"[REAL] {res['reason']}", opt_entry, opt_sl, opt_target, lot, is_exp, spot)
                                     broadcast_alert(
@@ -314,7 +324,7 @@ def anas_trading_loop():
                         broadcast_alert(f"💰 Target Hit: {tsym}", f"Exit ₹{curr_opt} | Net P&L: ₹{net}", f"💰 <b>TARGET HIT (DHAN)</b>\n{tsym} @ ₹{curr_opt}\nNet P&L: ₹{net}")
 
                 if len(open_trades) == 0:
-                    ok_risk, risk_msg = check_risk_limits()
+                    ok_risk, risk_msg = check_risk_limits(today_pnl)
                     if not ok_risk:
                         runtime_status["last_msg"] = risk_msg
                     else:
@@ -346,7 +356,7 @@ def anas_trading_loop():
                                     if not oi_ok:
                                         runtime_status["last_msg"] = f"[{s}] Skipped by OI Filter (PCR={pcr})"
                                     elif opt_entry > 10:
-                                        opt_sl, opt_target = calc_capped_sl_target(opt_entry, state["active_capital"], lot)
+                                        opt_sl, opt_target = calc_capped_sl_target(opt_entry, state["active_capital"], lot, today_pnl)
                                         opt_sym = f"{s} {strike} {'CE' if side == 'BUY_CE' else 'PE'}"
                                         db.open_virtual_trade(opt_sym, s, side, f"[DHAN] {res['reason']} | PCR:{pcr}", opt_entry, opt_sl, opt_target, lot, is_exp, runtime_status["spots"][s])
                                         broadcast_alert(f"🟢 LIVE SIGNAL: {opt_sym}", f"Entry ₹{opt_entry} | SL ₹{opt_sl} | Target ₹{opt_target} | PCR {pcr}", f"🟢 <b>ANAS AI LIVE SIGNAL</b>\n<b>{opt_sym}</b> {'⚠️ EXPIRY' if is_exp else ''}\nEntry: ₹{opt_entry} | SL: ₹{opt_sl} | Target: ₹{opt_target}\nPCR: {pcr} | Setup: {res['reason']}")
@@ -428,7 +438,7 @@ def dashboard():
     return """<!DOCTYPE html>
 <html>
 <head>
-  <title>ANAS AI - Pro v7.0</title>
+  <title>ANAS AI - Pro v7.1</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
   <meta name="theme-color" content="#0b0f19">
   <link rel="manifest" href="/manifest.json"><link rel="icon" href="/icon-192.png">
@@ -446,13 +456,13 @@ def dashboard():
   </style>
 </head>
 <body>
-  <h2 style="margin:4px 0 6px 0;">⚡ ANAS AI <span style="font-size:12px;color:#38bdf8;">QUANT v7.0</span></h2>
+  <h2 style="margin:4px 0 6px 0;">⚡ ANAS AI <span style="font-size:12px;color:#38bdf8;">QUANT v7.1</span></h2>
   <p id="status-line" style="font-size:12px;margin:4px 0;">Loading...</p>
   <p id="brain-line" style="font-size:11px;color:#94a3b8;margin:4px 0 12px 0;">Connecting...</p>
 
   <div class="grid">
     <div class="card">Active Capital<div id="cap" class="val">--</div></div>
-    <div class="card">Safe Vault (40%)<div id="vault" class="val" style="color:#38bdf8;">--</div></div>
+    <div class="card">Safe Vault (60%)<div id="vault" class="val" style="color:#38bdf8;">--</div></div>
     <div class="card">Today's Net P&L<div id="pnl" class="val">--</div></div>
     <div class="card">Win Rate<div id="winrate" class="val" style="color:#facc15;">--</div></div>
   </div>

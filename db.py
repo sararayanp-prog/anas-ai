@@ -188,8 +188,24 @@ def get_today_risk_stats():
         WHERE DATE(opened_at + INTERVAL '330 minutes') = DATE(NOW() + INTERVAL '330 minutes')
     """)
     row = cur.fetchone()
+    cur.execute("""
+        SELECT pnl_net FROM trades_journal
+        WHERE status = 'CLOSED'
+          AND DATE(opened_at + INTERVAL '330 minutes') = DATE(NOW() + INTERVAL '330 minutes')
+        ORDER BY id ASC
+    """)
+    running, peak = 0.0, 0.0
+    for (p,) in cur.fetchall():
+        running += float(p or 0)
+        if running > peak:
+            peak = running
     conn.close()
-    return {"trades_today": int(row[0] or 0), "losses_today": int(row[1] or 0), "last_loss_at": row[2]}
+    return {
+        "trades_today": int(row[0] or 0),
+        "losses_today": int(row[1] or 0),
+        "last_loss_at": row[2],
+        "peak_today_pnl": round(peak, 2)
+    }
 
 def get_analytics():
     conn = get_conn()
@@ -208,15 +224,9 @@ def get_analytics():
 def get_breakdown_analytics():
     conn = get_conn()
     cur = conn.cursor()
-    cur.execute("""
-        SELECT instrument, COUNT(*), COUNT(*) FILTER (WHERE pnl_net > 0), COALESCE(SUM(pnl_net), 0)
-        FROM trades_journal WHERE status = 'CLOSED' GROUP BY instrument
-    """)
+    cur.execute("SELECT instrument, COUNT(*), COUNT(*) FILTER (WHERE pnl_net > 0), COALESCE(SUM(pnl_net), 0) FROM trades_journal WHERE status = 'CLOSED' GROUP BY instrument")
     by_idx = cur.fetchall()
-    cur.execute("""
-        SELECT SPLIT_PART(setup_reason, '|', 1), COUNT(*), COUNT(*) FILTER (WHERE pnl_net > 0), COALESCE(SUM(pnl_net), 0)
-        FROM trades_journal WHERE status = 'CLOSED' GROUP BY 1
-    """)
+    cur.execute("SELECT SPLIT_PART(setup_reason, '|', 1), COUNT(*), COUNT(*) FILTER (WHERE pnl_net > 0), COALESCE(SUM(pnl_net), 0) FROM trades_journal WHERE status = 'CLOSED' GROUP BY 1")
     by_setup = cur.fetchall()
     conn.close()
     return by_idx, by_setup
@@ -270,7 +280,8 @@ def close_virtual_trade(trade_id, exit_price, gross_pnl):
     cur = conn.cursor()
     cur.execute("UPDATE trades_journal SET exit_price = %s, pnl_net = %s, status = 'CLOSED', closed_at = NOW() WHERE id = %s", (exit_price, net_pnl, trade_id))
     if net_pnl > 0:
-        cur.execute("UPDATE system_config SET safe_vault_profit = safe_vault_profit + %s, active_capital = active_capital + %s WHERE id = 1", (round(net_pnl * 0.40, 2), round(net_pnl * 0.60, 2)))
+        # 60% Safe Vault / 40% Active Capital
+        cur.execute("UPDATE system_config SET safe_vault_profit = safe_vault_profit + %s, active_capital = active_capital + %s WHERE id = 1", (round(net_pnl * 0.60, 2), round(net_pnl * 0.40, 2)))
     else:
         cur.execute("UPDATE system_config SET active_capital = active_capital + %s WHERE id = 1", (net_pnl,))
     conn.commit()
@@ -280,11 +291,7 @@ def close_virtual_trade(trade_id, exit_price, gross_pnl):
 def get_recent_trades(limit=12):
     conn = get_conn()
     cur = conn.cursor()
-    cur.execute("""
-        SELECT id, symbol, side, setup_reason, entry_price, trailing_sl,
-               target_price, exit_price, pnl_net, status, opened_at
-        FROM trades_journal ORDER BY id DESC LIMIT %s
-    """, (limit,))
+    cur.execute("SELECT id, symbol, side, setup_reason, entry_price, trailing_sl, target_price, exit_price, pnl_net, status, opened_at FROM trades_journal ORDER BY id DESC LIMIT %s", (limit,))
     rows = cur.fetchall()
     conn.close()
     return rows
@@ -292,11 +299,7 @@ def get_recent_trades(limit=12):
 def get_all_trades_export():
     conn = get_conn()
     cur = conn.cursor()
-    cur.execute("""
-        SELECT id, symbol, instrument, side, setup_reason, entry_price, stop_loss,
-               target_price, exit_price, qty, pnl_net, status, is_expiry_day, opened_at, closed_at
-        FROM trades_journal ORDER BY id DESC
-    """)
+    cur.execute("SELECT id, symbol, instrument, side, setup_reason, entry_price, stop_loss, target_price, exit_price, qty, pnl_net, status, is_expiry_day, opened_at, closed_at FROM trades_journal ORDER BY id DESC")
     rows = cur.fetchall()
     conn.close()
     return rows

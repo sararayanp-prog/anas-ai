@@ -4,7 +4,6 @@ def ist_now():
     return datetime.utcnow() + timedelta(hours=5, minutes=30)
 
 def is_expiry_for_index(symbol: str, now_dt=None):
-    # NIFTY Weekly = Tuesday (1), SENSEX Weekly = Thursday (3)
     wd = (now_dt or ist_now()).weekday()
     return (symbol == "NIFTY" and wd == 1) or (symbol == "SENSEX" and wd == 3)
 
@@ -67,7 +66,6 @@ def resample_15m(candles_5m):
     } for i in range(0, len(candles_5m) - 2, 3)]
 
 def extract_today_orb(candles):
-    """Find today's 9:15 AM opening gap & take first 3 closed 5m bars (9:15-9:30 ORB)"""
     open_idx = None
     for i in range(len(candles) - 1, 0, -1):
         if candles[i]["ts"] - candles[i - 1]["ts"] > 21600:
@@ -83,12 +81,16 @@ def analyze_market_structure(candles, pdh: float, pdl: float, is_expiry: bool = 
         return {"signal": "WAIT", "reason": "Warming up candles (need 35+)"}
 
     now_t = ist_now().time()
+    min_adx = 20.0
     if check_hours:
         if now_t < dt_time(9, 30):
             return {"signal": "WAIT", "reason": "09:15-09:30 Opening Chaos Filter"}
         cutoff = dt_time(14, 15) if is_expiry else dt_time(14, 45)
         if now_t >= cutoff:
             return {"signal": "BLOCKED", "reason": "Late-Session / Expiry Gamma Guard Active"}
+        # Lunch Chop Filter (12:00 - 13:15 IST me sirf strong trend ADX >= 25)
+        if dt_time(12, 0) <= now_t < dt_time(13, 15):
+            min_adx = 25.0
 
     closes_5m = [c["close"] for c in candles]
     ema9, ema21 = calc_ema(closes_5m[-25:], 9), calc_ema(closes_5m[-45:], 21)
@@ -97,8 +99,8 @@ def analyze_market_structure(candles, pdh: float, pdl: float, is_expiry: bool = 
     c15 = resample_15m(candles)
     htf_trend = "BULLISH" if (len(c15) >= 22 and calc_ema([x["close"] for x in c15[-15:]], 9) > calc_ema([x["close"] for x in c15[-25:]], 21)) or (len(c15) < 22 and ema9 > ema21) else "BEARISH"
 
-    if adx < 20.0:
-        return {"signal": "CHOPPY", "reason": f"Sideways Market (ADX:{adx}<20) - Stay Out"}
+    if adx < min_adx:
+        return {"signal": "CHOPPY", "reason": f"Sideways/Lunch Chop (ADX:{adx}<{min_adx}) - Stay Out"}
 
     last, prev = candles[-1], candles[-2]
     body, rng = abs(last["close"] - last["open"]), last["high"] - last["low"]
@@ -110,13 +112,11 @@ def analyze_market_structure(candles, pdh: float, pdl: float, is_expiry: bool = 
     prev_swing_high = max(c["high"] for c in candles[-10:-1])
     prev_swing_low = min(c["low"] for c in candles[-10:-1])
 
-    # 1. PDL / PDH Liquidity Sweep Traps
     if last["low"] < pdl and last["close"] > pdl and last["close"] > last["open"] and body > rng * 0.4 and rsi <= 65:
         return {"signal": "BUY_CE", "reason": f"PDL Trap Reclaim | ADX:{adx} RSI:{rsi}"}
     if last["high"] > pdh and last["close"] < pdh and last["close"] < last["open"] and body > rng * 0.4 and rsi >= 35:
         return {"signal": "BUY_PE", "reason": f"PDH Trap Rejection | ADX:{adx} RSI:{rsi}"}
 
-    # 2. 15m ORB Breakout + HTF Trend Alignment
     if orb_high and htf_trend == "BULLISH" and ema9 > ema21 and 45 <= rsi <= 68:
         if prev["close"] <= orb_high < last["close"] and body > rng * 0.45:
             return {"signal": "BUY_CE", "reason": f"15m ORB Breakout + HTF | ADX:{adx} RSI:{rsi}"}
@@ -124,7 +124,6 @@ def analyze_market_structure(candles, pdh: float, pdl: float, is_expiry: bool = 
         if prev["close"] >= orb_low > last["close"] and body > rng * 0.45:
             return {"signal": "BUY_PE", "reason": f"15m ORB Breakdown + HTF | ADX:{adx} RSI:{rsi}"}
 
-    # 3. 15m + 5m Aligned EMA Pullback + BOS (ORB safe)
     if htf_trend == "BULLISH" and ema9 > ema21 and 45 <= rsi <= 68:
         if last["close"] > ema9 and last["low"] <= ema9 * 1.0015 and last["close"] > prev_swing_high:
             if not orb_high or last["close"] > orb_high:
