@@ -16,6 +16,15 @@ def calc_ema(values, period):
         ema = v * k + ema * (1.0 - k)
     return round(ema, 2)
 
+def calc_atr(candles, period=14):
+    if len(candles) < period + 2:
+        return 20.0
+    trs = []
+    for i in range(1, len(candles)):
+        h, l, pc = candles[i]["high"], candles[i]["low"], candles[i - 1]["close"]
+        trs.append(max(h - l, abs(h - pc), abs(l - pc)))
+    return round(sum(trs[-period:]) / period, 2)
+
 def calc_rsi(closes, period=14):
     if len(closes) < period + 1:
         return 50.0
@@ -76,65 +85,82 @@ def extract_today_orb(candles):
         return max(b["high"] for b in orb_bars), min(b["low"] for b in orb_bars)
     return None, None
 
-def analyze_market_structure(candles, pdh: float, pdl: float, is_expiry: bool = False, check_hours: bool = True, base_min_adx: float = 20.0):
+def analyze_market_structure(candles, pdh: float, pdl: float, is_expiry: bool = False, check_hours: bool = True, base_min_adx: float = 20.0, now_dt=None):
     if len(candles) < 35:
-        return {"signal": "WAIT", "reason": "Warming up candles (need 35+)"}
+        return {"signal": "WAIT", "reason": "Warming up candles (need 35+)", "score": 0, "atr": 20.0}
 
-    now_t = ist_now().time()
+    now_t = (now_dt or ist_now()).time()
     min_adx = max(20.0, float(base_min_adx))
     if check_hours:
         if now_t < dt_time(9, 30):
-            return {"signal": "WAIT", "reason": "09:15-09:30 Opening Chaos Filter"}
+            return {"signal": "WAIT", "reason": "09:15-09:30 Opening Chaos Filter", "score": 0, "atr": 20.0}
         cutoff = dt_time(14, 15) if is_expiry else dt_time(14, 45)
         if now_t >= cutoff:
-            return {"signal": "BLOCKED", "reason": "Late-Session / Expiry Gamma Guard Active"}
+            return {"signal": "BLOCKED", "reason": "Late-Session / Expiry Gamma Guard Active", "score": 0, "atr": 20.0}
         if dt_time(12, 0) <= now_t < dt_time(13, 15):
             min_adx = max(25.0, float(base_min_adx))
 
     closes_5m = [c["close"] for c in candles]
     ema9, ema21 = calc_ema(closes_5m[-25:], 9), calc_ema(closes_5m[-45:], 21)
-    rsi, adx = calc_rsi(closes_5m[-30:], 14), calc_adx(candles[-50:], 14)
+    rsi, adx, atr = calc_rsi(closes_5m[-30:], 14), calc_adx(candles[-50:], 14), calc_atr(candles[-20:], 14)
 
     c15 = resample_15m(candles)
     htf_trend = "BULLISH" if (len(c15) >= 22 and calc_ema([x["close"] for x in c15[-15:]], 9) > calc_ema([x["close"] for x in c15[-25:]], 21)) or (len(c15) < 22 and ema9 > ema21) else "BEARISH"
 
     if adx < min_adx:
-        return {"signal": "CHOPPY", "reason": f"Sideways/Lunch Chop (ADX:{adx}<{min_adx}) - Stay Out"}
+        return {"signal": "CHOPPY", "reason": f"Sideways/Lunch Chop (ADX:{adx}<{min_adx})", "score": 0, "atr": atr}
 
     last, prev = candles[-1], candles[-2]
-    body, rng = abs(last["close"] - last["open"]), last["high"] - last["low"]
+    body, rng = abs(last["close"] - last["open"]), max(last["high"] - last["low"], 0.01)
     avg_range = sum(c["high"] - c["low"] for c in candles[-12:-1]) / 11.0
     if rng > avg_range * 2.3:
-        return {"signal": "WAIT", "reason": f"Spike Skipped (Anti-Chase) | ADX:{adx}"}
+        return {"signal": "WAIT", "reason": f"Spike Skipped (Anti-Chase) | ADX:{adx}", "score": 0, "atr": atr}
 
     orb_high, orb_low = extract_today_orb(candles)
     prev_swing_high = max(c["high"] for c in candles[-10:-1])
     prev_swing_low = min(c["low"] for c in candles[-10:-1])
 
-    # 1. Traps ONLY in controlled reversal zone (ADX <= 30 & RSI 38-62) — No Falling-Knife Calls!
-    if adx <= 30.0 and 38.0 <= rsi <= 62.0:
-        if last["low"] < pdl and last["close"] > pdl and last["close"] > last["open"] and body > rng * 0.4 and last["close"] > ema9:
-            return {"signal": "BUY_CE", "reason": f"PDL Trap Reclaim | ADX:{adx} RSI:{rsi}"}
-        if last["high"] > pdh and last["close"] < pdh and last["close"] < last["open"] and body > rng * 0.4 and last["close"] < ema9:
-            return {"signal": "BUY_PE", "reason": f"PDH Trap Rejection | ADX:{adx} RSI:{rsi}"}
+    is_prime = (dt_time(9, 35) <= now_t <= dt_time(11, 30)) or (dt_time(13, 15) <= now_t <= dt_time(14, 30))
+    time_pts = 20 if is_prime else 10
+    body_pts = 15 if body >= rng * 0.45 else 0
+    trend_adx_pts = 20 if adx >= 24.0 else 12
 
-    # 2. 15m ORB Breakout/Breakdown + HTF Trend Alignment
-    if orb_high and htf_trend == "BULLISH" and ema9 > ema21 and 45 <= rsi <= 68:
-        if prev["close"] <= orb_high < last["close"] and body > rng * 0.45:
-            return {"signal": "BUY_CE", "reason": f"15m ORB Breakout + HTF | ADX:{adx} RSI:{rsi}"}
-    if orb_low and htf_trend == "BEARISH" and ema9 < ema21 and 32 <= rsi <= 55:
-        if prev["close"] >= orb_low > last["close"] and body > rng * 0.45:
-            return {"signal": "BUY_PE", "reason": f"15m ORB Breakdown + HTF | ADX:{adx} RSI:{rsi}"}
+    cand_sig, cand_name, score = None, "", 0
+
+    # 1. Controlled Trap Reversals (No falling-knife trades)
+    if adx <= 30.0 and 38.0 <= rsi <= 62.0:
+        trap_adx_pts = 20 if adx <= 27.0 else 10
+        if last["low"] < pdl and last["close"] > pdl and last["close"] > last["open"] and body > rng * 0.4 and last["close"] > ema9:
+            cand_sig, cand_name = "BUY_CE", "PDL Trap Reclaim"
+            score = 25 + 20 + trap_adx_pts + body_pts + time_pts
+        elif last["high"] > pdh and last["close"] < pdh and last["close"] < last["open"] and body > rng * 0.4 and last["close"] < ema9:
+            cand_sig, cand_name = "BUY_PE", "PDH Trap Rejection"
+            score = 25 + 20 + trap_adx_pts + body_pts + time_pts
+
+    # 2. 15m ORB Breakout / Breakdown + HTF Alignment
+    if not cand_sig:
+        if orb_high and htf_trend == "BULLISH" and ema9 > ema21 and 45 <= rsi <= 68 and prev["close"] <= orb_high < last["close"] and body > rng * 0.45:
+            cand_sig, cand_name = "BUY_CE", "15m ORB Breakout"
+            score = 25 + 20 + trend_adx_pts + body_pts + time_pts
+        elif orb_low and htf_trend == "BEARISH" and ema9 < ema21 and 32 <= rsi <= 55 and prev["close"] >= orb_low > last["close"] and body > rng * 0.45:
+            cand_sig, cand_name = "BUY_PE", "15m ORB Breakdown"
+            score = 25 + 20 + trend_adx_pts + body_pts + time_pts
 
     # 3. 15m + 5m Aligned EMA Pullback + BOS
-    if htf_trend == "BULLISH" and ema9 > ema21 and 45 <= rsi <= 68:
-        if last["close"] > ema9 and last["low"] <= ema9 * 1.0015 and last["close"] > prev_swing_high:
+    if not cand_sig:
+        if htf_trend == "BULLISH" and ema9 > ema21 and 45 <= rsi <= 68 and last["close"] > ema9 and last["low"] <= ema9 * 1.0015 and last["close"] > prev_swing_high:
             if not orb_high or last["close"] > orb_high:
-                return {"signal": "BUY_CE", "reason": f"15m+5m Bull Pullback BOS | ADX:{adx} RSI:{rsi}"}
-    if htf_trend == "BEARISH" and ema9 < ema21 and 32 <= rsi <= 55:
-        if last["close"] < ema9 and last["high"] >= ema9 * 0.9985 and last["close"] < prev_swing_low:
+                cand_sig, cand_name = "BUY_CE", "15m+5m Bull Pullback BOS"
+                score = 25 + 20 + trend_adx_pts + body_pts + time_pts
+        elif htf_trend == "BEARISH" and ema9 < ema21 and 32 <= rsi <= 55 and last["close"] < ema9 and last["high"] >= ema9 * 0.9985 and last["close"] < prev_swing_low:
             if not orb_low or last["close"] < orb_low:
-                return {"signal": "BUY_PE", "reason": f"15m+5m Bear Pullback BOS | ADX:{adx} RSI:{rsi}"}
+                cand_sig, cand_name = "BUY_PE", "15m+5m Bear Pullback BOS"
+                score = 25 + 20 + trend_adx_pts + body_pts + time_pts
+
+    if cand_sig:
+        if score >= 75:
+            return {"signal": cand_sig, "reason": f"{cand_name} | Score:{score} ADX:{adx} RSI:{rsi}", "score": score, "atr": atr}
+        return {"signal": "WAIT", "reason": f"Low Score Skipped ({cand_name}: {score}/100 < 75)", "score": score, "atr": atr}
 
     orb_txt = f"ORB:{orb_low}-{orb_high}" if orb_high else "ORB:Wait"
-    return {"signal": "WAIT", "reason": f"HTF:{htf_trend} ADX:{adx} RSI:{rsi} {orb_txt}"}
+    return {"signal": "WAIT", "reason": f"HTF:{htf_trend} ADX:{adx} RSI:{rsi} {orb_txt}", "score": 0, "atr": atr}

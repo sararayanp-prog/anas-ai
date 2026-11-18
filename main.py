@@ -15,6 +15,7 @@ import dhan_bridge
 import free_market
 import push_service
 import health_healer
+import backtester
 from structure_engine import analyze_market_structure, ist_now, is_expiry_for_index
 from telegram_alert import send_telegram
 from ai_analyst import generate_premarket_brief, audit_todays_trades
@@ -41,12 +42,13 @@ def broadcast_alert(title: str, body: str, tg_html: str):
     send_telegram(tg_html)
     push_service.send_web_push(title, body)
 
-def calc_capped_sl_target(opt_entry: float, active_capital: float, lot: int, today_pnl: float = 0.0):
-    max_risk_rs = active_capital * 0.015
+def calc_capped_sl_target(opt_entry: float, active_capital: float, lot: int, today_pnl: float = 0.0, spot_atr: float = 20.0):
+    max_risk_rs = active_capital * 0.02
     if today_pnl >= 600.0:
         max_risk_rs = min(max_risk_rs, max(today_pnl * 0.55, 400.0))
-    max_sl_pts = max(round(max_risk_rs / max(lot, 1), 2), 6.0)
-    sl_pts = min(round(opt_entry * 0.18, 2), max_sl_pts)
+    atr_opt_pts = round(spot_atr * 1.5 * 0.5, 2)
+    max_sl_pts = max(round(max_risk_rs / max(lot, 1), 2), 8.0)
+    sl_pts = min(max(atr_opt_pts, 10.0), max_sl_pts)
     return round(opt_entry - sl_pts, 2), round(opt_entry + (sl_pts * 2.0), 2)
 
 def step_trail_check(tid, tsym, entry, trail_sl, curr_opt):
@@ -213,7 +215,7 @@ def anas_trading_loop():
                         if res["signal"] in ("BUY_CE", "BUY_PE"):
                             side = res["signal"]
                             opt_entry = 140.0
-                            opt_sl, opt_target = calc_capped_sl_target(opt_entry, state["active_capital"], 75, today_pnl)
+                            opt_sl, opt_target = calc_capped_sl_target(opt_entry, state["active_capital"], 75, today_pnl, res.get("atr", 20.0))
                             opt_sym = f"NIFTY {int(round(spot / 50.0) * 50)} {'CE' if side == 'BUY_CE' else 'PE'}"
                             db.open_virtual_trade(opt_sym, "NIFTY", side, f"[SIM] {res['reason']}", opt_entry, opt_sl, opt_target, 75, False, spot)
                             broadcast_alert(f"🟢 SIGNAL (SIM): {opt_sym}", f"Entry ₹{opt_entry} | SL ₹{opt_sl} | Target ₹{opt_target}", f"🟢 <b>SIM SIGNAL</b>\n<b>{opt_sym}</b>\nEntry: ₹{opt_entry} | SL: ₹{opt_sl} | Target: ₹{opt_target}")
@@ -284,7 +286,7 @@ def anas_trading_loop():
                                 elif res["signal"] in ("BUY_CE", "BUY_PE"):
                                     side = res["signal"]
                                     opt_entry = {"NIFTY": 140.0, "BANKNIFTY": 320.0, "SENSEX": 350.0}.get(s, 140.0)
-                                    opt_sl, opt_target = calc_capped_sl_target(opt_entry, state["active_capital"], lot, today_pnl)
+                                    opt_sl, opt_target = calc_capped_sl_target(opt_entry, state["active_capital"], lot, today_pnl, res.get("atr", 20.0))
                                     opt_sym = f"{s} {int(round(spot / step) * step)} {'CE' if side == 'BUY_CE' else 'PE'}"
                                     db.open_virtual_trade(opt_sym, s, side, f"[REAL] {res['reason']}", opt_entry, opt_sl, opt_target, lot, is_exp, spot)
                                     broadcast_alert(
@@ -383,7 +385,7 @@ def anas_trading_loop():
                                     if not oi_ok:
                                         runtime_status["last_msg"] = f"[{s}] Skipped by OI Filter (PCR={pcr})"
                                     elif opt_entry > 10:
-                                        opt_sl, opt_target = calc_capped_sl_target(opt_entry, state["active_capital"], lot, today_pnl)
+                                        opt_sl, opt_target = calc_capped_sl_target(opt_entry, state["active_capital"], lot, today_pnl, res.get("atr", 20.0))
                                         opt_sym = f"{s} {strike} {'CE' if side == 'BUY_CE' else 'PE'}"
                                         db.open_virtual_trade(opt_sym, s, side, f"[DHAN] {res['reason']} | PCR:{pcr}", opt_entry, opt_sl, opt_target, lot, is_exp, runtime_status["spots"][s])
                                         broadcast_alert(f"🟢 LIVE SIGNAL: {opt_sym}", f"Entry ₹{opt_entry} | SL ₹{opt_sl} | Target ₹{opt_target} | PCR {pcr}", f"🟢 <b>ANAS AI LIVE SIGNAL</b>\n<b>{opt_sym}</b> {'⚠️ EXPIRY' if is_exp else ''}\nEntry: ₹{opt_entry} | SL: ₹{opt_sl} | Target: ₹{opt_target}\nPCR: {pcr} | Setup: {res['reason']}")
@@ -470,7 +472,7 @@ def dashboard():
     return """<!DOCTYPE html>
 <html>
 <head>
-  <title>ANAS AI - Pro v8.1</title>
+  <title>ANAS AI - Pro v9.0</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
   <meta name="theme-color" content="#0b0f19">
   <link rel="manifest" href="/manifest.json"><link rel="icon" href="/icon-192.png">
@@ -488,7 +490,7 @@ def dashboard():
   </style>
 </head>
 <body>
-  <h2 style="margin:4px 0 6px 0;">⚡ ANAS AI <span style="font-size:12px;color:#38bdf8;">QUANT v8.1</span></h2>
+  <h2 style="margin:4px 0 6px 0;">⚡ ANAS AI <span style="font-size:12px;color:#38bdf8;">QUANT v9.0</span></h2>
   <p id="status-line" style="font-size:12px;margin:4px 0;">Loading...</p>
   <p id="brain-line" style="font-size:11px;color:#94a3b8;margin:4px 0 12px 0;">Connecting...</p>
 
@@ -508,6 +510,7 @@ def dashboard():
     <a href="/ai-audit" class="btn" style="background:#7c3aed;">📊 AI AUDIT</a>
     <a href="/analytics" class="btn" style="background:#0d9488;">📈 SETUP STATS</a>
     <a href="/health" class="btn" style="background:#15803d;">🩺 HEALTH</a>
+    <a href="/backtest" class="btn" style="background:#be185d;">🔬 BACKTEST 60D</a>
     <a href="/export.csv" class="btn" style="background:#475569;">📥 CSV</a>
     <a href="/test-telegram" class="btn" style="background:#0ea5e9;">📩 TEST TG</a>
     <a href="/test-dhan" class="btn" style="background:#f59e0b;color:#000;">📡 TEST DHAN</a>
@@ -641,6 +644,19 @@ def reset_sim():
         return "<body style='background:#0b0f19;color:#ef4444;padding:20px;font-family:sans-serif;'>❌ Galat PIN!<br><a href='/' style='color:#38bdf8;'>← Back</a></body>"
     db.reset_paper_data()
     return redirect("/")
+
+@app.route("/backtest")
+def backtest_page():
+    cards = ""
+    for sym in ("SENSEX", "BANKNIFTY", "NIFTY"):
+        try:
+            r = backtester.run_60d_backtest(sym)
+            c = "#22c55e" if r["net_pnl"] >= 0 else "#ef4444"
+            st_rows = "".join(f"<tr><td>{k}</td><td>{v[0]}</td><td>{v[1]}</td><td style='color:{'#22c55e' if v[2]>=0 else '#ef4444'};'>₹{v[2]:,.2f}</td></tr>" for k, v in r["by_setup"].items())
+            cards += f"<div style='background:#161e2e;padding:14px;border-radius:12px;margin-bottom:14px;border:1px solid #263147;'><h3 style='margin:0 0 6px 0;'>{sym} ({r['days']} Days | {r['candles']} Candles)</h3><p style='font-size:13px;'>Trades: <b>{r['total']}</b> | Wins: <b>{r['wins']} ({r['win_rate']}%)</b> | Profit Factor: <b>{r['pf']}</b> | Max DD: <b>₹{r['max_dd']:,.2f}</b><br>Net P&L: <b style='color:{c};font-size:16px;'>₹{r['net_pnl']:,.2f}</b></p><table border=1 cellpadding=6 style='border-collapse:collapse;width:100%;font-size:11px;border-color:#263147;'><tr><th>Setup</th><th>Trades</th><th>Wins</th><th>Net P&L</th></tr>{st_rows}</table></div>"
+        except Exception as e:
+            cards += f"<div style='color:#ef4444;'>{sym} Error: {e}</div>"
+    return f"<body style='background:#0b0f19;color:#e2e8f0;font-family:system-ui,sans-serif;padding:16px;'><h2>🔬 60-Day Real 5-Min Backtest (v9.0)</h2><p style='font-size:12px;color:#94a3b8;'>Rules: Score>=75, ATR SL (2% cap), 1:2 R:R, Step-Trail, 45m Time-Stop, Peak Shield, Theta & ₹55 brokerage included.</p>{cards}<a href='/' style='color:#38bdf8;'>← Back to Dashboard</a></body>"
 
 @app.route("/health")
 def health_page():
