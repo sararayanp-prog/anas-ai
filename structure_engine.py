@@ -140,9 +140,7 @@ def analyze_market_structure(candles, pdh: float, pdl: float, is_expiry: bool = 
         if orb_high and htf_trend == "BULLISH" and ema9 > ema21 and 45 <= rsi <= 68 and prev["close"] <= orb_high < last["close"] and body > rng * 0.45:
             cand_sig, cand_name = "BUY_CE", "15m ORB Breakout"
             score = 25 + 20 + trend_adx_pts + body_pts + time_pts
-        elif orb_low and htf_trend == "BEARISH" and ema9 < ema21 and 32 <= rsi <= 55 and prev["close"] >= orb_low > last["close"] and body > rng * 0.45:
-            cand_sig, cand_name = "BUY_PE", "15m ORB Breakdown"
-            score = 25 + 20 + trend_adx_pts + body_pts + time_pts
+
 
     if not cand_sig:
         if htf_trend == "BULLISH" and ema9 > ema21 and 45 <= rsi <= 68 and last["close"] > ema9 and last["low"] <= ema9 * 1.0015 and last["close"] > prev_swing_high:

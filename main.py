@@ -23,7 +23,7 @@ from ai_analyst import generate_premarket_brief, audit_todays_trades
 load_dotenv()
 app = Flask(__name__)
 
-ALL_INDICES = ["SENSEX", "BANKNIFTY", "NIFTY"]
+ALL_INDICES = ["SENSEX", "BANKNIFTY"]
 
 runtime_status = {
     "spots": {"NIFTY": 0.0, "BANKNIFTY": 0.0, "SENSEX": 0.0},
@@ -469,7 +469,7 @@ def dashboard():
     return """<!DOCTYPE html>
 <html>
 <head>
-  <title>ANAS AI - Pro v9.0</title>
+  <title>ANAS AI - Pro v9.1</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
   <meta name="theme-color" content="#0b0f19">
   <link rel="manifest" href="/manifest.json"><link rel="icon" href="/icon-192.png">
@@ -487,7 +487,7 @@ def dashboard():
   </style>
 </head>
 <body>
-  <h2 style="margin:4px 0 6px 0;">⚡ ANAS AI <span style="font-size:12px;color:#38bdf8;">QUANT v9.0</span></h2>
+  <h2 style="margin:4px 0 6px 0;">⚡ ANAS AI <span style="font-size:12px;color:#38bdf8;">QUANT v9.1</span></h2>
   <p id="status-line" style="font-size:12px;margin:4px 0;">Loading...</p>
   <p id="brain-line" style="font-size:11px;color:#94a3b8;margin:4px 0 12px 0;">Connecting...</p>
 
@@ -522,7 +522,7 @@ def dashboard():
     <a href="/mode/PAPER_DHAN" class="btn" style="background:#0284c7;">📡 DHAN PAPER</a>
     <a href="/mode/PAPER_SIM" class="btn" style="background:#475569;">🧪 SIM</a>
     <br><b>Index:</b>
-    <a href="/sym/ALL" class="btn" style="background:#0891b2;">🌐 ALL 3 SCAN</a>
+    <a href="/sym/ALL" class="btn" style="background:#0891b2;">🌐 SENSEX+BN SCAN</a>
     <a href="/sym/NIFTY" class="btn" style="background:#334155;">NIFTY</a>
     <a href="/sym/BANKNIFTY" class="btn" style="background:#334155;">BANKNIFTY</a>
     <a href="/sym/SENSEX" class="btn" style="background:#334155;">SENSEX</a>
