@@ -76,12 +76,12 @@ def extract_today_orb(candles):
         return max(b["high"] for b in orb_bars), min(b["low"] for b in orb_bars)
     return None, None
 
-def analyze_market_structure(candles, pdh: float, pdl: float, is_expiry: bool = False, check_hours: bool = True):
+def analyze_market_structure(candles, pdh: float, pdl: float, is_expiry: bool = False, check_hours: bool = True, base_min_adx: float = 20.0):
     if len(candles) < 35:
         return {"signal": "WAIT", "reason": "Warming up candles (need 35+)"}
 
     now_t = ist_now().time()
-    min_adx = 20.0
+    min_adx = max(20.0, float(base_min_adx))
     if check_hours:
         if now_t < dt_time(9, 30):
             return {"signal": "WAIT", "reason": "09:15-09:30 Opening Chaos Filter"}
@@ -89,7 +89,7 @@ def analyze_market_structure(candles, pdh: float, pdl: float, is_expiry: bool = 
         if now_t >= cutoff:
             return {"signal": "BLOCKED", "reason": "Late-Session / Expiry Gamma Guard Active"}
         if dt_time(12, 0) <= now_t < dt_time(13, 15):
-            min_adx = 25.0
+            min_adx = max(25.0, float(base_min_adx))
 
     closes_5m = [c["close"] for c in candles]
     ema9, ema21 = calc_ema(closes_5m[-25:], 9), calc_ema(closes_5m[-45:], 21)
