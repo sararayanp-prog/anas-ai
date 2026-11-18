@@ -42,8 +42,8 @@ def broadcast_alert(title: str, body: str, tg_html: str):
     send_telegram(tg_html)
     push_service.send_web_push(title, body)
 
-def calc_capped_sl_target(opt_entry: float, active_capital: float, lot: int, today_pnl: float = 0.0, spot_atr: float = 20.0):
-    max_risk_rs = active_capital * 0.02
+def calc_capped_sl_target(opt_entry: float, active_capital: float, lot: int, today_pnl: float = 0.0, spot_atr: float = 20.0, vol_regime: str = "NORMAL"):
+    max_risk_rs = active_capital * (0.01 if vol_regime == "HIGH_VOL" else 0.02)
     if today_pnl >= 600.0:
         max_risk_rs = min(max_risk_rs, max(today_pnl * 0.55, 400.0))
     atr_opt_pts = round(spot_atr * 1.5 * 0.5, 2)
@@ -67,8 +67,7 @@ def make_png_icon(size: int):
     for y in range(size):
         row = bytearray([0])
         for x in range(size):
-            if (pad <= x <= size - pad and (abs(y - pad) < 4 or abs(y - (size - pad)) < 4)) or \
-               (pad <= y <= size - pad and (abs(x - pad) < 4 or abs(x - (size - pad)) < 4)):
+            if (pad <= x <= size - pad and (abs(y - pad) < 4 or abs(y - (size - pad)) < 4)) or (pad <= y <= size - pad and (abs(x - pad) < 4 or abs(x - (size - pad)) < 4)):
                 r, g, b = border
             elif size // 4 <= y <= size * 3 // 4:
                 half_w = int((y - size // 4) * 0.55) + 4
@@ -104,7 +103,7 @@ def is_indian_market_open():
     return now.weekday() < 5 and dt_time(9, 15) <= now.time() <= dt_time(15, 30)
 
 def sync_real_spots_once():
-    for s in ALL_INDICES:
+    for s in ("SENSEX", "BANKNIFTY", "NIFTY"):
         try:
             sp, _, _, _, _, _ = free_market.get_free_market_data(s)
             runtime_status["spots"][s] = sp
@@ -144,7 +143,8 @@ def anas_trading_loop():
             now_ist = ist_now()
             today_str = now_ist.strftime("%Y-%m-%d")
             active_sym = state["active_symbol"]
-            runtime_status["is_expiry"] = any(is_expiry_for_index(x, now_ist) for x in (ALL_INDICES if active_sym == "ALL" else [active_sym]))
+            scan_list = ALL_INDICES if active_sym == "ALL" else [active_sym]
+            runtime_status["is_expiry"] = any(is_expiry_for_index(x, now_ist) for x in scan_list)
 
             if now_ist.weekday() < 5 and dt_time(15, 45) <= now_ist.time() <= dt_time(15, 58) and state.get("last_audit_date") != today_str:
                 rep = audit_todays_trades(db.get_recent_trades(10))
@@ -179,8 +179,8 @@ def anas_trading_loop():
                 continue
 
             mode = state["mode"]
-            scan_list = ALL_INDICES if active_sym == "ALL" else [active_sym]
             open_trades = db.get_open_trades()
+            can_open_new = (len(open_trades) == 0) or (len(open_trades) == 1 and float(open_trades[0][8]) >= float(open_trades[0][5]))
 
             if mode == "PAPER_SIM":
                 new_c = generate_sim_candle(int(time.time()))
@@ -212,7 +212,7 @@ def anas_trading_loop():
                         if res["signal"] in ("BUY_CE", "BUY_PE"):
                             side = res["signal"]
                             opt_entry = 140.0
-                            opt_sl, opt_target = calc_capped_sl_target(opt_entry, state["active_capital"], 75, today_pnl, res.get("atr", 20.0))
+                            opt_sl, opt_target = calc_capped_sl_target(opt_entry, state["active_capital"], 75, today_pnl, res.get("atr", 20.0), res.get("vol_regime", "NORMAL"))
                             opt_sym = f"NIFTY {int(round(spot / 50.0) * 50)} {'CE' if side == 'BUY_CE' else 'PE'}"
                             db.open_virtual_trade(opt_sym, "NIFTY", side, f"[SIM] {res['reason']}", opt_entry, opt_sl, opt_target, 75, False, spot)
                             broadcast_alert(f"🟢 SIGNAL (SIM): {opt_sym}", f"Entry ₹{opt_entry} | SL ₹{opt_sl} | Target ₹{opt_target}", f"🟢 <b>SIM SIGNAL</b>\n<b>{opt_sym}</b>\nEntry: ₹{opt_entry} | SL: ₹{opt_sl} | Target: ₹{opt_target}")
@@ -241,62 +241,73 @@ def anas_trading_loop():
 
                     if mins_open >= 45.0 and (entry * 0.95) <= curr_opt <= (entry * 1.08):
                         net = db.close_virtual_trade(tid, curr_opt, (curr_opt - entry) * qty)
-                        health_healer.evaluate_post_trade_health(reason, net, broadcast_alert)
+                        health_healer.evaluate_post_trade_health(inst, reason, net, broadcast_alert)
                         broadcast_alert(f"⌛ 45m Time-Stop: {tsym}", f"Dead Trade Exit ₹{curr_opt} | Net: ₹{net}", f"⌛ <b>45-MIN DEAD-TRADE EXIT</b>\n{tsym} @ ₹{curr_opt}\nNet P&L: ₹{net}")
                         continue
 
                     if now_ist.time() >= dt_time(15, 15):
                         net = db.close_virtual_trade(tid, curr_opt, (curr_opt - entry) * qty)
-                        health_healer.evaluate_post_trade_health(reason, net, broadcast_alert)
+                        health_healer.evaluate_post_trade_health(inst, reason, net, broadcast_alert)
                         broadcast_alert(f"⏰ 3:15 PM Exit: {tsym}", f"MIS Exit ₹{curr_opt} | Net P&L: ₹{net}", f"⏰ <b>3:15 PM AUTO SQUARE-OFF</b>\n{tsym} @ ₹{curr_opt}\nNet P&L: ₹{net}")
                         continue
 
                     step_trail_check(tid, tsym, entry, trail_sl, curr_opt)
                     if curr_opt <= trail_sl:
                         net = db.close_virtual_trade(tid, curr_opt, (curr_opt - entry) * qty)
-                        health_healer.evaluate_post_trade_health(reason, net, broadcast_alert)
+                        health_healer.evaluate_post_trade_health(inst, reason, net, broadcast_alert)
                         broadcast_alert(f"🔴 SL Hit (REAL): {tsym}", f"Exit ₹{curr_opt} | Net P&L: ₹{net}", f"🔴 <b>SL HIT EXIT (REAL)</b>\n{tsym} @ ₹{curr_opt}\nNet P&L: ₹{net}")
                     elif curr_opt >= target:
                         net = db.close_virtual_trade(tid, curr_opt, (curr_opt - entry) * qty)
                         broadcast_alert(f"💰 Target Hit (REAL): {tsym}", f"Exit ₹{curr_opt} | Net P&L: ₹{net}", f"💰 <b>TARGET HIT (REAL)</b>\n{tsym} @ ₹{curr_opt}\nNet P&L: ₹{net}")
 
-                if len(open_trades) == 0:
+                if can_open_new:
                     ok_risk, risk_msg = check_risk_limits(today_pnl)
                     if not ok_risk:
                         runtime_status["last_msg"] = risk_msg
                     else:
                         msgs = []
                         for s in scan_list:
+                            if any(t[2] == s for t in open_trades):
+                                continue
                             spot, pdh, pdl, candles, step, lot = free_market.get_free_market_data(s)
                             runtime_status["spots"][s] = spot
+                            health_healer.process_shadow_recovery(s, spot, broadcast_alert)
                             if len(candles) < 36:
                                 continue
                             closed_candles = candles[:-1]
+                            fw_ok, fw_msg = health_healer.check_data_firewall(spot, closed_candles)
+                            if not fw_ok:
+                                runtime_status["last_msg"] = f"[{s}] Firewall: {fw_msg}"
+                                continue
                             latest_ts = closed_candles[-1]["ts"]
                             if last_eval_ts.get(s) != latest_ts:
                                 last_eval_ts[s] = latest_ts
                                 is_exp = is_expiry_for_index(s, now_ist)
                                 res = analyze_market_structure(closed_candles, pdh=pdh, pdl=pdl, is_expiry=is_exp, check_hours=True, base_min_adx=state.get("dynamic_min_adx", 20.0))
                                 msgs.append(f"{s}:{res['signal']}")
-                                if res["signal"] in ("BUY_CE", "BUY_PE") and health_healer.is_setup_paused(res["reason"], state.get("paused_setups", "")):
-                                    runtime_status["last_msg"] = f"[{s}] Paused by Self-Healer"
+                                if res["signal"] in ("BUY_CE", "BUY_PE") and health_healer.is_setup_paused(s, res["reason"], state.get("paused_setups", "")):
+                                    pk = health_healer.make_pair_key(s, res["reason"])
+                                    pe = {"NIFTY": 140.0, "BANKNIFTY": 320.0, "SENSEX": 350.0}.get(s, 300.0)
+                                    psl, ptgt = calc_capped_sl_target(pe, state["active_capital"], lot, today_pnl, res.get("atr", 20.0), res.get("vol_regime", "NORMAL"))
+                                    db.open_shadow_trade(s, res["signal"], pk, pe, psl, ptgt, spot)
+                                    runtime_status["last_msg"] = f"[{s}] Shadow Test ({pk})"
                                 elif res["signal"] in ("BUY_CE", "BUY_PE"):
                                     side = res["signal"]
                                     opt_entry = {"NIFTY": 140.0, "BANKNIFTY": 320.0, "SENSEX": 350.0}.get(s, 140.0)
-                                    opt_sl, opt_target = calc_capped_sl_target(opt_entry, state["active_capital"], lot, today_pnl, res.get("atr", 20.0))
+                                    opt_sl, opt_target = calc_capped_sl_target(opt_entry, state["active_capital"], lot, today_pnl, res.get("atr", 20.0), res.get("vol_regime", "NORMAL"))
                                     opt_sym = f"{s} {int(round(spot / step) * step)} {'CE' if side == 'BUY_CE' else 'PE'}"
                                     db.open_virtual_trade(opt_sym, s, side, f"[REAL] {res['reason']}", opt_entry, opt_sl, opt_target, lot, is_exp, spot)
                                     broadcast_alert(
                                         f"🟢 REAL SIGNAL: {opt_sym}",
                                         f"Spot {spot} | Proxy ₹{opt_entry} | SL ₹{opt_sl} | Target ₹{opt_target}",
-                                        f"🟢 <b>ANAS AI REAL SIGNAL</b>\n<b>{opt_sym}</b> {'⚠️ EXPIRY' if is_exp else ''}\nSpot: {spot} | Proxy: ₹{opt_entry} | SL: ₹{opt_sl} | Target: ₹{opt_target}\nSetup: {res['reason']}"
+                                        f"🟢 <b>ANAS AI REAL SIGNAL</b>\n<b>{opt_sym}</b> {'⚠️ EXPIRY' if is_exp else ''}\nSpot: {spot} | Proxy: ₹{opt_entry} | SL: ₹{opt_sl} | Target: ₹{opt_target}\nSetup: {res['reason']} ({res.get('vol_regime','NORMAL')})"
                                     )
                                     runtime_status["last_msg"] = f"[{s}] {res['reason']}"
                                     break
                                 else:
                                     runtime_status["last_msg"] = f"[{s}] {res['reason']}"
                         if msgs and len(scan_list) > 1:
-                            runtime_status["last_msg"] = "ALL-3: " + " | ".join(msgs)
+                            runtime_status["last_msg"] = "ALL: " + " | ".join(msgs)
                 health_healer.reset_error_streak()
                 time.sleep(15)
                 continue
@@ -328,31 +339,33 @@ def anas_trading_loop():
                     mins_open = max((datetime.utcnow() - opened_at.replace(tzinfo=None)).total_seconds() / 60.0, 0.0) if opened_at else 0.0
                     if mins_open >= 45.0 and (entry * 0.95) <= curr_opt <= (entry * 1.08):
                         net = db.close_virtual_trade(tid, curr_opt, (curr_opt - entry) * qty)
-                        health_healer.evaluate_post_trade_health(reason, net, broadcast_alert)
+                        health_healer.evaluate_post_trade_health(inst, reason, net, broadcast_alert)
                         broadcast_alert(f"⌛ 45m Time-Stop: {tsym}", f"Dead Trade Exit ₹{curr_opt} | Net: ₹{net}", f"⌛ <b>45-MIN DEAD-TRADE EXIT</b>\n{tsym} @ ₹{curr_opt}\nNet P&L: ₹{net}")
                         continue
 
                     if now_ist.time() >= dt_time(15, 15):
                         net = db.close_virtual_trade(tid, curr_opt, (curr_opt - entry) * qty)
-                        health_healer.evaluate_post_trade_health(reason, net, broadcast_alert)
+                        health_healer.evaluate_post_trade_health(inst, reason, net, broadcast_alert)
                         broadcast_alert(f"⏰ 3:15 PM Exit: {tsym}", f"MIS Exit ₹{curr_opt} | Net P&L: ₹{net}", f"⏰ <b>3:15 PM AUTO SQUARE-OFF</b>\n{tsym} @ ₹{curr_opt}\nNet P&L: ₹{net}")
                         continue
 
                     step_trail_check(tid, tsym, entry, trail_sl, curr_opt)
                     if curr_opt <= trail_sl:
                         net = db.close_virtual_trade(tid, curr_opt, (curr_opt - entry) * qty)
-                        health_healer.evaluate_post_trade_health(reason, net, broadcast_alert)
+                        health_healer.evaluate_post_trade_health(inst, reason, net, broadcast_alert)
                         broadcast_alert(f"🔴 SL Hit: {tsym}", f"Exit ₹{curr_opt} | Net P&L: ₹{net}", f"🔴 <b>SL HIT EXIT (DHAN)</b>\n{tsym} @ ₹{curr_opt}\nNet P&L: ₹{net}")
                     elif curr_opt >= target:
                         net = db.close_virtual_trade(tid, curr_opt, (curr_opt - entry) * qty)
                         broadcast_alert(f"💰 Target Hit: {tsym}", f"Exit ₹{curr_opt} | Net P&L: ₹{net}", f"💰 <b>TARGET HIT (DHAN)</b>\n{tsym} @ ₹{curr_opt}\nNet P&L: ₹{net}")
 
-                if len(open_trades) == 0:
+                if can_open_new:
                     ok_risk, risk_msg = check_risk_limits(today_pnl)
                     if not ok_risk:
                         runtime_status["last_msg"] = risk_msg
                     else:
                         for s in scan_list:
+                            if any(t[2] == s for t in open_trades):
+                                continue
                             if s not in cached_pdh_pdl or cached_pdh_pdl[s]["date"] != today_str:
                                 pdh, pdl = dhan_bridge.get_pdh_pdl(s)
                                 cached_pdh_pdl[s] = {"date": today_str, "pdh": pdh, "pdl": pdl}
@@ -371,7 +384,7 @@ def anas_trading_loop():
                                 last_eval_ts[s] = latest_ts
                                 res = analyze_market_structure(closed_candles, pdh=pdh, pdl=pdl, is_expiry=is_exp, check_hours=True, base_min_adx=state.get("dynamic_min_adx", 20.0))
                                 runtime_status["last_msg"] = f"[{s}] {res['reason']}"
-                                if res["signal"] in ("BUY_CE", "BUY_PE") and health_healer.is_setup_paused(res["reason"], state.get("paused_setups", "")):
+                                if res["signal"] in ("BUY_CE", "BUY_PE") and health_healer.is_setup_paused(s, res["reason"], state.get("paused_setups", "")):
                                     runtime_status["last_msg"] = f"[{s}] Paused by Self-Healer"
                                 elif res["signal"] in ("BUY_CE", "BUY_PE"):
                                     oc_data = dhan_bridge.get_option_chain_snapshot(s, expiry)
@@ -382,7 +395,7 @@ def anas_trading_loop():
                                     if not oi_ok:
                                         runtime_status["last_msg"] = f"[{s}] Skipped by OI Filter (PCR={pcr})"
                                     elif opt_entry > 10:
-                                        opt_sl, opt_target = calc_capped_sl_target(opt_entry, state["active_capital"], lot, today_pnl, res.get("atr", 20.0))
+                                        opt_sl, opt_target = calc_capped_sl_target(opt_entry, state["active_capital"], lot, today_pnl, res.get("atr", 20.0), res.get("vol_regime", "NORMAL"))
                                         opt_sym = f"{s} {strike} {'CE' if side == 'BUY_CE' else 'PE'}"
                                         db.open_virtual_trade(opt_sym, s, side, f"[DHAN] {res['reason']} | PCR:{pcr}", opt_entry, opt_sl, opt_target, lot, is_exp, runtime_status["spots"][s])
                                         broadcast_alert(f"🟢 LIVE SIGNAL: {opt_sym}", f"Entry ₹{opt_entry} | SL ₹{opt_sl} | Target ₹{opt_target} | PCR {pcr}", f"🟢 <b>ANAS AI LIVE SIGNAL</b>\n<b>{opt_sym}</b> {'⚠️ EXPIRY' if is_exp else ''}\nEntry: ₹{opt_entry} | SL: ₹{opt_sl} | Target: ₹{opt_target}\nPCR: {pcr} | Setup: {res['reason']}")
@@ -454,7 +467,7 @@ def api_state():
     today_pnl, stats, trades = db.get_today_pnl(), db.get_analytics(), db.get_recent_trades(12)
     t_list = [{"id": t[0], "symbol": t[1], "side": t[2], "setup": t[3], "entry": float(t[4]), "trail_sl": float(t[5]), "target": float(t[6]), "exit": float(t[7]) if t[7] is not None else None, "pnl": float(t[8] or 0), "status": t[9]} for t in trades]
     sym = state["active_symbol"]
-    spot_txt = f"N:{runtime_status['spots']['NIFTY']} | BN:{runtime_status['spots']['BANKNIFTY']} | S:{runtime_status['spots']['SENSEX']}" if sym == "ALL" else str(runtime_status["spots"].get(sym, 0))
+    spot_txt = f"S:{runtime_status['spots']['SENSEX']} | BN:{runtime_status['spots']['BANKNIFTY']}" if sym == "ALL" else str(runtime_status["spots"].get(sym, 0))
     return jsonify({
         "symbol": sym, "spot_txt": spot_txt, "mode": state["mode"],
         "kill_switch": state["kill_switch"], "is_expiry": runtime_status["is_expiry"],
@@ -469,7 +482,7 @@ def dashboard():
     return """<!DOCTYPE html>
 <html>
 <head>
-  <title>ANAS AI - Pro v9.1</title>
+  <title>ANAS AI - Genius v9.2</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
   <meta name="theme-color" content="#0b0f19">
   <link rel="manifest" href="/manifest.json"><link rel="icon" href="/icon-192.png">
@@ -487,7 +500,7 @@ def dashboard():
   </style>
 </head>
 <body>
-  <h2 style="margin:4px 0 6px 0;">⚡ ANAS AI <span style="font-size:12px;color:#38bdf8;">QUANT v9.1</span></h2>
+  <h2 style="margin:4px 0 6px 0;">⚡ ANAS AI <span style="font-size:12px;color:#38bdf8;">QUANT v9.2</span></h2>
   <p id="status-line" style="font-size:12px;margin:4px 0;">Loading...</p>
   <p id="brain-line" style="font-size:11px;color:#94a3b8;margin:4px 0 12px 0;">Connecting...</p>
 
@@ -653,14 +666,14 @@ def backtest_page():
             cards += f"<div style='background:#161e2e;padding:14px;border-radius:12px;margin-bottom:14px;border:1px solid #263147;'><h3 style='margin:0 0 6px 0;'>{sym} ({r['days']} Days | {r['candles']} Candles)</h3><p style='font-size:13px;'>Trades: <b>{r['total']}</b> | Wins: <b>{r['wins']} ({r['win_rate']}%)</b> | Profit Factor: <b>{r['pf']}</b> | Max DD: <b>₹{r['max_dd']:,.2f}</b><br>Net P&L: <b style='color:{c};font-size:16px;'>₹{r['net_pnl']:,.2f}</b></p><table border=1 cellpadding=6 style='border-collapse:collapse;width:100%;font-size:11px;border-color:#263147;'><tr><th>Setup</th><th>Trades</th><th>Wins</th><th>Net P&L</th></tr>{st_rows}</table></div>"
         except Exception as e:
             cards += f"<div style='color:#ef4444;'>{sym} Error: {e}</div>"
-    return f"<body style='background:#0b0f19;color:#e2e8f0;font-family:system-ui,sans-serif;padding:16px;'><h2>🔬 60-Day Real 5-Min Backtest (v9.0)</h2><p style='font-size:12px;color:#94a3b8;'>Rules: Score>=75, ATR SL (2% cap), 1:2 R:R, Step-Trail, 45m Time-Stop, Peak Shield, Theta & ₹55 brokerage included.</p>{cards}<a href='/' style='color:#38bdf8;'>← Back to Dashboard</a></body>"
+    return f"<body style='background:#0b0f19;color:#e2e8f0;font-family:system-ui,sans-serif;padding:16px;'><h2>🔬 60-Day Real 5-Min Backtest (v9.2)</h2><p style='font-size:12px;color:#94a3b8;'>Rules: Score>=75, ATR SL (2% cap), 1:2 R:R, Step-Trail, 45m Time-Stop, Peak Shield, Theta & ₹55 brokerage included.</p>{cards}<a href='/' style='color:#38bdf8;'>← Back to Dashboard</a></body>"
 
 @app.route("/health")
 def health_page():
     st = db.get_system_state()
     logs, errs, heals = db.get_health_summary()
     rows = "".join(f"<tr><td>{r[0]}</td><td>{r[1]}</td><td>{r[2]}</td><td style='color:#38bdf8;'>{r[3]}</td></tr>" for r in logs) or "<tr><td colspan=4>100% Clean — Zero errors today!</td></tr>"
-    return f"<body style='background:#0b0f19;color:#e2e8f0;font-family:system-ui,sans-serif;padding:20px;'><h2>🩺 System Health & Self-Healer</h2><p>Today Errors: <b>{errs}</b> | Auto-Healed: <b>{heals}</b> | Dynamic Min ADX: <b>{st['dynamic_min_adx']}</b><br>Auto-Paused Setups: <b>{st['paused_setups'] or 'None'}</b></p><a href='/health/reset' style='background:#0284c7;color:#fff;padding:8px 12px;border-radius:8px;text-decoration:none;display:inline-block;margin-bottom:14px;'>🔄 Unpause Setups & Reset ADX</a><table border=1 cellpadding=8 style='border-collapse:collapse;width:100%;font-size:12px;border-color:#263147;'><tr><th>Level</th><th>Source</th><th>Message</th><th>Auto-Heal Action</th></tr>{rows}</table><br><a href='/' style='color:#38bdf8;'>← Back</a></body>"
+    return f"<body style='background:#0b0f19;color:#e2e8f0;font-family:system-ui,sans-serif;padding:20px;'><h2>🩺 System Health & Self-Healer</h2><p>Today Errors: <b>{errs}</b> | Auto-Healed: <b>{heals}</b> | Dynamic Min ADX: <b>{st['dynamic_min_adx']}</b><br>Auto-Paused Pairs: <b>{st['paused_setups'] or 'None'}</b></p><a href='/health/reset' style='background:#0284c7;color:#fff;padding:8px 12px;border-radius:8px;text-decoration:none;display:inline-block;margin-bottom:14px;'>🔄 Unpause Pairs & Reset ADX</a><table border=1 cellpadding=8 style='border-collapse:collapse;width:100%;font-size:12px;border-color:#263147;'><tr><th>Level</th><th>Source</th><th>Message</th><th>Auto-Heal Action</th></tr>{rows}</table><br><a href='/' style='color:#38bdf8;'>← Back</a></body>"
 
 @app.route("/health/reset")
 def health_reset():
@@ -692,7 +705,7 @@ def export_csv():
 @app.route("/test-feed")
 def test_feed():
     lines = []
-    for s in ALL_INDICES:
+    for s in ("SENSEX", "BANKNIFTY", "NIFTY"):
         try:
             sp, pdh, pdl, c, _, _ = free_market.get_free_market_data(s, force=True)
             runtime_status["spots"][s] = sp
