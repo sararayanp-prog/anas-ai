@@ -146,21 +146,18 @@ def anas_trading_loop():
             active_sym = state["active_symbol"]
             runtime_status["is_expiry"] = any(is_expiry_for_index(x, now_ist) for x in (ALL_INDICES if active_sym == "ALL" else [active_sym]))
 
-            # 3:45 PM IST Daily Auto-Diagnosis
             if now_ist.weekday() < 5 and dt_time(15, 45) <= now_ist.time() <= dt_time(15, 58) and state.get("last_audit_date") != today_str:
                 rep = audit_todays_trades(db.get_recent_trades(10))
                 _, err_c, heal_c = db.get_health_summary()
                 broadcast_alert("🌙 ANAS AI 3:45 PM Audit", f"Errors:{err_c} Healed:{heal_c} | {rep[:140]}", f"🌙 <b>3:45 PM AUTO-DIAGNOSIS ({today_str})</b>\nHealth: {err_c} Errors, {heal_c} Auto-Healed\n\n{rep[:3200]}")
                 db.update_setting("last_audit_date", today_str)
 
-            # 8:50 AM Auto Dhan Token
             if now_ist.weekday() < 5 and dt_time(8, 50) <= now_ist.time() <= dt_time(9, 10) and state["last_token_date"] != today_str:
                 if os.getenv("DHAN_TOTP_SECRET") and os.getenv("DHAN_PIN"):
                     ok, msg = dhan_bridge.auto_generate_access_token()
                     send_telegram(f"🔑 <b>Dhan Auto-Token:</b> {msg}")
                 db.update_setting("last_token_date", today_str)
 
-            # 8:55 AM Morning Brief
             if now_ist.weekday() < 5 and dt_time(8, 55) <= now_ist.time() <= dt_time(9, 10) and state["last_brief_date"] != today_str:
                 brief = generate_premarket_brief()
                 broadcast_alert("🌅 ANAS AI Morning Brief", brief[:180], f"🌅 <b>ANAS AI MORNING BRIEF ({today_str})</b>\n\n{brief[:3500]}")
