@@ -127,7 +127,6 @@ def analyze_market_structure(candles, pdh: float, pdl: float, is_expiry: bool = 
 
     cand_sig, cand_name, score = None, "", 0
 
-    # 1. Controlled Trap Reversals (No falling-knife trades)
     if adx <= 30.0 and 38.0 <= rsi <= 62.0:
         trap_adx_pts = 20 if adx <= 27.0 else 10
         if last["low"] < pdl and last["close"] > pdl and last["close"] > last["open"] and body > rng * 0.4 and last["close"] > ema9:
@@ -137,7 +136,6 @@ def analyze_market_structure(candles, pdh: float, pdl: float, is_expiry: bool = 
             cand_sig, cand_name = "BUY_PE", "PDH Trap Rejection"
             score = 25 + 20 + trap_adx_pts + body_pts + time_pts
 
-    # 2. 15m ORB Breakout / Breakdown + HTF Alignment
     if not cand_sig:
         if orb_high and htf_trend == "BULLISH" and ema9 > ema21 and 45 <= rsi <= 68 and prev["close"] <= orb_high < last["close"] and body > rng * 0.45:
             cand_sig, cand_name = "BUY_CE", "15m ORB Breakout"
@@ -146,7 +144,6 @@ def analyze_market_structure(candles, pdh: float, pdl: float, is_expiry: bool = 
             cand_sig, cand_name = "BUY_PE", "15m ORB Breakdown"
             score = 25 + 20 + trend_adx_pts + body_pts + time_pts
 
-    # 3. 15m + 5m Aligned EMA Pullback + BOS
     if not cand_sig:
         if htf_trend == "BULLISH" and ema9 > ema21 and 45 <= rsi <= 68 and last["close"] > ema9 and last["low"] <= ema9 * 1.0015 and last["close"] > prev_swing_high:
             if not orb_high or last["close"] > orb_high:
