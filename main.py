@@ -500,11 +500,11 @@ def dashboard():
     <b style="font-size:12px;">🔑 Daily Dhan Token & Reset</b>
     <form action="/update-token" method="POST" style="margin-top:6px;">
       <input type="text" name="token" placeholder="Paste Dhan Access Token" required style="width:55%;">
-      <input type="password" name="pin" placeholder="PIN (2026)" required style="width:28%;">
+      <input type="password" name="pin" placeholder="Enter PIN" required style="width:28%;">
       <button type="submit" class="btn" style="background:#0284c7;">💾 Save</button>
     </form>
     <form action="/reset-sim" method="POST" style="margin-top:4px;">
-      <input type="password" name="pin" placeholder="PIN (2026)" required style="width:30%;">
+      <input type="password" name="pin" placeholder="Enter PIN" required style="width:30%;">
       <button type="submit" class="btn" style="background:#7f1d1d;">🧹 Reset Test Data</button>
     </form>
   </div>
@@ -598,14 +598,14 @@ def set_sym(s):
 
 @app.route("/update-token", methods=["POST"])
 def update_token():
-    if request.form.get("pin", "") != os.getenv("ADMIN_PIN", "2026"):
+    if request.form.get("pin", "") != os.getenv("ADMIN_PIN", "0401"):
         return "<body style='background:#0b0f19;color:#ef4444;padding:20px;font-family:sans-serif;'>❌ Galat PIN!<br><a href='/' style='color:#38bdf8;'>← Back</a></body>"
     db.update_setting("dhan_token", request.form.get("token", "").strip())
     return redirect("/")
 
 @app.route("/reset-sim", methods=["POST"])
 def reset_sim():
-    if request.form.get("pin", "") != os.getenv("ADMIN_PIN", "2026"):
+    if request.form.get("pin", "") != os.getenv("ADMIN_PIN", "0401"):
         return "<body style='background:#0b0f19;color:#ef4444;padding:20px;font-family:sans-serif;'>❌ Galat PIN!<br><a href='/' style='color:#38bdf8;'>← Back</a></body>"
     db.reset_paper_data()
     return redirect("/")
