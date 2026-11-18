@@ -56,7 +56,7 @@ def init_db():
         "last_token_date VARCHAR(20) DEFAULT ''",
         "vapid_public TEXT DEFAULT ''",
         "vapid_private TEXT DEFAULT ''",
-        "kill_baseline NUMERIC(12, 2) DEFAULT 0.00"
+        "kill_baseline NUMERIC(12, 2) DEFAULT 0.00", "kill_baseline_date VARCHAR(20) DEFAULT ''"
     ):
         cur.execute(f"ALTER TABLE system_config ADD COLUMN IF NOT EXISTS {col}")
     cur.execute("INSERT INTO system_config (id) VALUES (1) ON CONFLICT (id) DO NOTHING")
@@ -140,7 +140,7 @@ def get_system_state():
     cur.execute("""
         SELECT trading_mode, active_capital, safe_vault_profit,
                daily_max_loss_pct, kill_switch, market_bias, active_symbol,
-               dhan_token, last_brief_date, kill_baseline, last_token_date
+               dhan_token, last_brief_date, kill_baseline, last_token_date, kill_baseline_date
         FROM system_config WHERE id = 1
     """)
     row = cur.fetchone()
@@ -150,7 +150,7 @@ def get_system_state():
         "max_loss_pct": float(row[3]), "kill_switch": bool(row[4]), "market_bias": row[5],
         "active_symbol": row[6] or "ALL", "dhan_token": (row[7] or "").strip(),
         "last_brief_date": row[8] or "", "kill_baseline": float(row[9] or 0),
-        "last_token_date": row[10] or ""
+        "last_token_date": row[10] or "", "kill_baseline_date": row[11] or ""
     }
 
 def update_setting(field: str, value):
@@ -166,7 +166,7 @@ def update_setting(field: str, value):
 def unlock_kill_switch(current_pnl: float):
     conn = get_conn()
     cur = conn.cursor()
-    cur.execute("UPDATE system_config SET kill_switch = FALSE, kill_baseline = %s, updated_at = NOW() WHERE id = 1", (current_pnl,))
+    cur.execute("UPDATE system_config SET kill_switch = FALSE, kill_baseline = %s, kill_baseline_date = TO_CHAR(NOW() + INTERVAL '330 minutes', 'YYYY-MM-DD'), updated_at = NOW() WHERE id = 1", (current_pnl,))
     conn.commit()
     conn.close()
 

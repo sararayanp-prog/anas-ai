@@ -88,7 +88,6 @@ def analyze_market_structure(candles, pdh: float, pdl: float, is_expiry: bool = 
         cutoff = dt_time(14, 15) if is_expiry else dt_time(14, 45)
         if now_t >= cutoff:
             return {"signal": "BLOCKED", "reason": "Late-Session / Expiry Gamma Guard Active"}
-        # Lunch Chop Filter (12:00 - 13:15 IST me sirf strong trend ADX >= 25)
         if dt_time(12, 0) <= now_t < dt_time(13, 15):
             min_adx = 25.0
 
@@ -112,11 +111,14 @@ def analyze_market_structure(candles, pdh: float, pdl: float, is_expiry: bool = 
     prev_swing_high = max(c["high"] for c in candles[-10:-1])
     prev_swing_low = min(c["low"] for c in candles[-10:-1])
 
-    if last["low"] < pdl and last["close"] > pdl and last["close"] > last["open"] and body > rng * 0.4 and rsi <= 65:
-        return {"signal": "BUY_CE", "reason": f"PDL Trap Reclaim | ADX:{adx} RSI:{rsi}"}
-    if last["high"] > pdh and last["close"] < pdh and last["close"] < last["open"] and body > rng * 0.4 and rsi >= 35:
-        return {"signal": "BUY_PE", "reason": f"PDH Trap Rejection | ADX:{adx} RSI:{rsi}"}
+    # 1. Traps ONLY in controlled reversal zone (ADX <= 30 & RSI 38-62) — No Falling-Knife Calls!
+    if adx <= 30.0 and 38.0 <= rsi <= 62.0:
+        if last["low"] < pdl and last["close"] > pdl and last["close"] > last["open"] and body > rng * 0.4 and last["close"] > ema9:
+            return {"signal": "BUY_CE", "reason": f"PDL Trap Reclaim | ADX:{adx} RSI:{rsi}"}
+        if last["high"] > pdh and last["close"] < pdh and last["close"] < last["open"] and body > rng * 0.4 and last["close"] < ema9:
+            return {"signal": "BUY_PE", "reason": f"PDH Trap Rejection | ADX:{adx} RSI:{rsi}"}
 
+    # 2. 15m ORB Breakout/Breakdown + HTF Trend Alignment
     if orb_high and htf_trend == "BULLISH" and ema9 > ema21 and 45 <= rsi <= 68:
         if prev["close"] <= orb_high < last["close"] and body > rng * 0.45:
             return {"signal": "BUY_CE", "reason": f"15m ORB Breakout + HTF | ADX:{adx} RSI:{rsi}"}
@@ -124,6 +126,7 @@ def analyze_market_structure(candles, pdh: float, pdl: float, is_expiry: bool = 
         if prev["close"] >= orb_low > last["close"] and body > rng * 0.45:
             return {"signal": "BUY_PE", "reason": f"15m ORB Breakdown + HTF | ADX:{adx} RSI:{rsi}"}
 
+    # 3. 15m + 5m Aligned EMA Pullback + BOS
     if htf_trend == "BULLISH" and ema9 > ema21 and 45 <= rsi <= 68:
         if last["close"] > ema9 and last["low"] <= ema9 * 1.0015 and last["close"] > prev_swing_high:
             if not orb_high or last["close"] > orb_high:

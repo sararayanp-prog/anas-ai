@@ -21,7 +21,7 @@ from ai_analyst import generate_premarket_brief, audit_todays_trades
 load_dotenv()
 app = Flask(__name__)
 
-ALL_INDICES = ["NIFTY", "BANKNIFTY", "SENSEX"]
+ALL_INDICES = ["SENSEX", "BANKNIFTY", "NIFTY"]
 
 runtime_status = {
     "spots": {"NIFTY": 0.0, "BANKNIFTY": 0.0, "SENSEX": 0.0},
@@ -158,7 +158,8 @@ def anas_trading_loop():
                 db.update_setting("last_brief_date", today_str)
 
             today_pnl = db.get_today_pnl()
-            eff_pnl = today_pnl - state["kill_baseline"]
+            baseline = state["kill_baseline"] if state.get("kill_baseline_date") == today_str else 0.0
+            eff_pnl = today_pnl - baseline
             max_loss_amt = -(state["active_capital"] * (state["max_loss_pct"] / 100.0))
 
             if not state["kill_switch"] and eff_pnl <= max_loss_amt:
@@ -203,7 +204,7 @@ def anas_trading_loop():
                         runtime_status["last_msg"] = f"[SIM] {res['reason']}"
                         if res["signal"] in ("BUY_CE", "BUY_PE"):
                             side = res["signal"]
-                            opt_entry = 140.0
+                            opt_entry = {"NIFTY": 140.0, "BANKNIFTY": 320.0, "SENSEX": 350.0}.get(s if "s" in locals() else "NIFTY", 140.0)
                             opt_sl, opt_target = calc_capped_sl_target(opt_entry, state["active_capital"], 75)
                             opt_sym = f"NIFTY {int(round(spot / 50.0) * 50)} {'CE' if side == 'BUY_CE' else 'PE'}"
                             db.open_virtual_trade(opt_sym, "NIFTY", side, f"[SIM] {res['reason']}", opt_entry, opt_sl, opt_target, 75, False, spot)
@@ -221,7 +222,7 @@ def anas_trading_loop():
                 for t in open_trades:
                     tid, tsym, inst, side, reason, entry, sl, target, trail_sl, qty, is_exp, spot_ref, opened_at = t
                     entry, target, trail_sl, spot_ref = float(entry), float(target), float(trail_sl), float(spot_ref or 0)
-                    spot, _, _, _, _, _ = free_market.get_free_market_data(inst)
+                    spot, _, _, _, _, _ = free_market.get_free_market_data(inst, force=True)
                     runtime_status["spots"][inst] = spot
                     if spot_ref == 0:
                         spot_ref = spot
@@ -269,7 +270,7 @@ def anas_trading_loop():
                                 msgs.append(f"{s}:{res['signal']}")
                                 if res["signal"] in ("BUY_CE", "BUY_PE"):
                                     side = res["signal"]
-                                    opt_entry = 140.0
+                                    opt_entry = {"NIFTY": 140.0, "BANKNIFTY": 320.0, "SENSEX": 350.0}.get(s if "s" in locals() else "NIFTY", 140.0)
                                     opt_sl, opt_target = calc_capped_sl_target(opt_entry, state["active_capital"], lot, today_pnl)
                                     opt_sym = f"{s} {int(round(spot / step) * step)} {'CE' if side == 'BUY_CE' else 'PE'}"
                                     db.open_virtual_trade(opt_sym, s, side, f"[REAL] {res['reason']}", opt_entry, opt_sl, opt_target, lot, is_exp, spot)
@@ -438,7 +439,7 @@ def dashboard():
     return """<!DOCTYPE html>
 <html>
 <head>
-  <title>ANAS AI - Pro v7.1</title>
+  <title>ANAS AI - Pro v8.0</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
   <meta name="theme-color" content="#0b0f19">
   <link rel="manifest" href="/manifest.json"><link rel="icon" href="/icon-192.png">
@@ -456,7 +457,7 @@ def dashboard():
   </style>
 </head>
 <body>
-  <h2 style="margin:4px 0 6px 0;">⚡ ANAS AI <span style="font-size:12px;color:#38bdf8;">QUANT v7.1</span></h2>
+  <h2 style="margin:4px 0 6px 0;">⚡ ANAS AI <span style="font-size:12px;color:#38bdf8;">QUANT v8.0</span></h2>
   <p id="status-line" style="font-size:12px;margin:4px 0;">Loading...</p>
   <p id="brain-line" style="font-size:11px;color:#94a3b8;margin:4px 0 12px 0;">Connecting...</p>
 
