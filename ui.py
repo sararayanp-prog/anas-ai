@@ -89,7 +89,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 
   <p id="status-line" style="font-size:12px;margin:4px 0;">Loading...</p>
   <p id="brain-line" style="font-size:11px;color:#94a3b8;margin:2px 0 8px 0;">Connecting...</p>
-  <p id="push-msg" style="font-size:11px;color:#38bdf8;margin:2px 0;"></p>
+  <div id="armor-bar" style="background:#161e2e;border:1px solid #263147;padding:8px 10px;border-radius:10px;font-size:11px;margin:6px 0;color:#38bdf8;">🛡️ Capital Armor loading...</div><p id="push-msg" style="font-size:11px;color:#38bdf8;margin:2px 0;"></p>
 
   <div class="grid">
     <div class="card">Active Capital<div id="cap" class="val">--</div></div>
@@ -144,6 +144,9 @@ DASHBOARD_HTML = """<!DOCTYPE html>
         document.getElementById('status-line').innerHTML =
           `<b>${d.symbol}</b> (${d.spot_txt}) | <b>${d.mode}</b> | <b>${d.kill_switch ? '🔴 LOCKED' : '🟢 SCANNING'}</b> | ${d.is_expiry ? '⚠️ EXPIRY' : 'Normal'} | ${d.dhan_ok ? '✅ Token OK' : '⏳ Token Pending'}`;
         document.getElementById('brain-line').textContent = 'Brain: ' + d.brain;
+        document.getElementById('armor-bar').innerHTML = d.sniper
+          ? `🛡️ <b>Capital Armor: ${d.armor_pct}%</b> | <b style="color:#facc15;">RECOVERY SNIPER (85+ | 1% Risk)</b><br><span style="color:#94a3b8;">Aap safe hain — manual trade mat karna, AI high-accuracy wait kar raha hai.</span>`
+          : `🛡️ <b>Capital Armor: ${d.armor_pct}%</b> | <b style="color:#22c55e;">NORMAL IQ (Score 75+ | 2% Risk)</b>`;
         document.getElementById('cap').textContent = '₹' + d.capital.toLocaleString('en-IN', {minimumFractionDigits:2});
         document.getElementById('vault').textContent = '₹' + d.vault.toLocaleString('en-IN', {minimumFractionDigits:2});
         const pnlEl = document.getElementById('pnl');
