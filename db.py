@@ -341,3 +341,25 @@ def get_all_trades_export():
     rows = cur.fetchall()
     conn.close()
     return rows
+
+def lock_kill_switch(date_str: str):
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("ALTER TABLE system_config ADD COLUMN IF NOT EXISTS kill_date VARCHAR(20) DEFAULT ''")
+    cur.execute("UPDATE system_config SET kill_switch = TRUE, kill_date = %s, updated_at = NOW() WHERE id = 1", (date_str,))
+    conn.commit()
+    conn.close()
+
+def auto_unlock_new_day(today_str: str):
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("ALTER TABLE system_config ADD COLUMN IF NOT EXISTS kill_date VARCHAR(20) DEFAULT ''")
+    cur.execute("SELECT kill_switch, COALESCE(kill_date, '') FROM system_config WHERE id = 1")
+    row = cur.fetchone()
+    unlocked = False
+    if row and row[0] and row[1] and row[1] < today_str:
+        cur.execute("UPDATE system_config SET kill_switch = FALSE, kill_date = '', kill_baseline = 0.00, kill_baseline_date = '', updated_at = NOW() WHERE id = 1")
+        unlocked = True
+    conn.commit()
+    conn.close()
+    return unlocked

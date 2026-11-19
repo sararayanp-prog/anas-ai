@@ -146,6 +146,7 @@ def check_and_trigger_kill(state, today_str):
 
 def anas_trading_loop():
     global sim_candles
+    my_owner = f"{socket.gethostname()}_{os.getpid()}_{uuid.uuid4().hex[:6]}"
     runtime_status["last_msg"] = "Engine Active..."
     for i in range(38):
         sim_candles.append(generate_sim_candle(i))
@@ -155,7 +156,7 @@ def anas_trading_loop():
 
     while True:
         try:
-            if not db.acquire_engine_lease(MY_OWNER_ID):
+            if not db.acquire_engine_lease(my_owner):
                 runtime_status["last_msg"] = "Standby Worker (Master Active)"
                 time.sleep(10)
                 continue
