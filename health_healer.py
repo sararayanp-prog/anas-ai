@@ -39,6 +39,9 @@ def heal_runtime_error(source: str, err, alert_fn=None):
     if jarvis_doctor.try_instant_cure(source, str(err), alert_fn):
         _consecutive_errors = 0
         return 1
+    if jarvis_doctor.try_instant_cure(source, str(err), alert_fn):
+        _consecutive_errors = 0
+        return 1
     _consecutive_errors += 1
     free_market._cache.clear()
     healed_action = "Cleared feed cache & auto-retried"
