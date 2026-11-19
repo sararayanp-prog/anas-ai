@@ -1,4 +1,6 @@
 import os
+import uuid
+import socket
 import io
 import csv
 import json
@@ -37,6 +39,7 @@ sim_bias = 1.0
 _engine_pid = None
 _engine_thread = None
 _engine_lock = threading.Lock()
+MY_OWNER_ID = f"{socket.gethostname()}_{os.getpid()}_{uuid.uuid4().hex[:6]}"
 
 def broadcast_alert(title: str, body: str, tg_html: str):
     send_telegram(tg_html)
@@ -138,6 +141,10 @@ def anas_trading_loop():
 
     while True:
         try:
+            if not db.acquire_engine_lease(MY_OWNER_ID):
+                runtime_status["last_msg"] = "Standby Worker (Master Active)"
+                time.sleep(10)
+                continue
             runtime_status["ticks"] += 1
             state = db.get_system_state()
             now_ist = ist_now()
@@ -214,7 +221,7 @@ def anas_trading_loop():
                             opt_entry = 140.0
                             opt_sl, opt_target = calc_capped_sl_target(opt_entry, state["active_capital"], 75, today_pnl, res.get("atr", 20.0), res.get("vol_regime", "NORMAL"))
                             opt_sym = f"NIFTY {int(round(spot / 50.0) * 50)} {'CE' if side == 'BUY_CE' else 'PE'}"
-                            db.open_virtual_trade(opt_sym, "NIFTY", side, f"[SIM] {res['reason']}", opt_entry, opt_sl, opt_target, 75, False, spot)
+                            tid_new = db.open_virtual_trade(opt_sym, "NIFTY", side, f"[SIM] {res['reason']}", opt_entry, opt_sl, opt_target, 75, False, spot)
                             broadcast_alert(f"🟢 SIGNAL (SIM): {opt_sym}", f"Entry ₹{opt_entry} | SL ₹{opt_sl} | Target ₹{opt_target}", f"🟢 <b>SIM SIGNAL</b>\n<b>{opt_sym}</b>\nEntry: ₹{opt_entry} | SL: ₹{opt_sl} | Target: ₹{opt_target}")
 
             elif mode == "PAPER_REAL":
@@ -296,7 +303,7 @@ def anas_trading_loop():
                                     opt_entry = {"NIFTY": 140.0, "BANKNIFTY": 320.0, "SENSEX": 350.0}.get(s, 140.0)
                                     opt_sl, opt_target = calc_capped_sl_target(opt_entry, state["active_capital"], lot, today_pnl, res.get("atr", 20.0), res.get("vol_regime", "NORMAL"))
                                     opt_sym = f"{s} {int(round(spot / step) * step)} {'CE' if side == 'BUY_CE' else 'PE'}"
-                                    db.open_virtual_trade(opt_sym, s, side, f"[REAL] {res['reason']}", opt_entry, opt_sl, opt_target, lot, is_exp, spot)
+                                    tid_new = db.open_virtual_trade(opt_sym, s, side, f"[REAL] {res['reason']}", opt_entry, opt_sl, opt_target, lot, is_exp, spot)
                                     broadcast_alert(
                                         f"🟢 REAL SIGNAL: {opt_sym}",
                                         f"Spot {spot} | Proxy ₹{opt_entry} | SL ₹{opt_sl} | Target ₹{opt_target}",
@@ -397,7 +404,7 @@ def anas_trading_loop():
                                     elif opt_entry > 10:
                                         opt_sl, opt_target = calc_capped_sl_target(opt_entry, state["active_capital"], lot, today_pnl, res.get("atr", 20.0), res.get("vol_regime", "NORMAL"))
                                         opt_sym = f"{s} {strike} {'CE' if side == 'BUY_CE' else 'PE'}"
-                                        db.open_virtual_trade(opt_sym, s, side, f"[DHAN] {res['reason']} | PCR:{pcr}", opt_entry, opt_sl, opt_target, lot, is_exp, runtime_status["spots"][s])
+                                        tid_new = db.open_virtual_trade(opt_sym, s, side, f"[DHAN] {res['reason']} | PCR:{pcr}", opt_entry, opt_sl, opt_target, lot, is_exp, runtime_status["spots"][s])
                                         broadcast_alert(f"🟢 LIVE SIGNAL: {opt_sym}", f"Entry ₹{opt_entry} | SL ₹{opt_sl} | Target ₹{opt_target} | PCR {pcr}", f"🟢 <b>ANAS AI LIVE SIGNAL</b>\n<b>{opt_sym}</b> {'⚠️ EXPIRY' if is_exp else ''}\nEntry: ₹{opt_entry} | SL: ₹{opt_sl} | Target: ₹{opt_target}\nPCR: {pcr} | Setup: {res['reason']}")
                                         break
                 health_healer.reset_error_streak()
@@ -500,7 +507,7 @@ def dashboard():
   </style>
 </head>
 <body>
-  <h2 style="margin:4px 0 6px 0;">⚡ ANAS AI <span style="font-size:12px;color:#38bdf8;">QUANT v9.2</span></h2>
+  <h2 style="margin:4px 0 6px 0;">⚡ ANAS AI <span style="font-size:12px;color:#38bdf8;">QUANT v9.3</span></h2>
   <p id="status-line" style="font-size:12px;margin:4px 0;">Loading...</p>
   <p id="brain-line" style="font-size:11px;color:#94a3b8;margin:4px 0 12px 0;">Connecting...</p>
 
@@ -666,7 +673,7 @@ def backtest_page():
             cards += f"<div style='background:#161e2e;padding:14px;border-radius:12px;margin-bottom:14px;border:1px solid #263147;'><h3 style='margin:0 0 6px 0;'>{sym} ({r['days']} Days | {r['candles']} Candles)</h3><p style='font-size:13px;'>Trades: <b>{r['total']}</b> | Wins: <b>{r['wins']} ({r['win_rate']}%)</b> | Profit Factor: <b>{r['pf']}</b> | Max DD: <b>₹{r['max_dd']:,.2f}</b><br>Net P&L: <b style='color:{c};font-size:16px;'>₹{r['net_pnl']:,.2f}</b></p><table border=1 cellpadding=6 style='border-collapse:collapse;width:100%;font-size:11px;border-color:#263147;'><tr><th>Setup</th><th>Trades</th><th>Wins</th><th>Net P&L</th></tr>{st_rows}</table></div>"
         except Exception as e:
             cards += f"<div style='color:#ef4444;'>{sym} Error: {e}</div>"
-    return f"<body style='background:#0b0f19;color:#e2e8f0;font-family:system-ui,sans-serif;padding:16px;'><h2>🔬 60-Day Real 5-Min Backtest (v9.2)</h2><p style='font-size:12px;color:#94a3b8;'>Rules: Score>=75, ATR SL (2% cap), 1:2 R:R, Step-Trail, 45m Time-Stop, Peak Shield, Theta & ₹55 brokerage included.</p>{cards}<a href='/' style='color:#38bdf8;'>← Back to Dashboard</a></body>"
+    return f"<body style='background:#0b0f19;color:#e2e8f0;font-family:system-ui,sans-serif;padding:16px;'><h2>🔬 60-Day Real 5-Min Backtest (v9.3)</h2><p style='font-size:12px;color:#94a3b8;'>Rules: Score>=75, ATR SL (2% cap), 1:2 R:R, Step-Trail, 45m Time-Stop, Peak Shield, Theta & ₹55 brokerage included.</p>{cards}<a href='/' style='color:#38bdf8;'>← Back to Dashboard</a></body>"
 
 @app.route("/health")
 def health_page():

@@ -122,15 +122,15 @@ def analyze_market_structure(candles, pdh: float, pdl: float, is_expiry: bool = 
         elif last["high"] > pdh and last["close"] < pdh and last["close"] < last["open"] and body > rng * 0.4 and last["close"] < ema9:
             cand_sig, cand_name, score = "BUY_PE", "PDH Trap Rejection", 25 + 20 + trap_adx_pts + body_pts + time_pts
 
-    if not cand_sig and orb_high and htf_trend == "BULLISH" and ema9 > ema21 and 45 <= rsi <= 68:
+    if not cand_sig and orb_high and htf_trend == "BULLISH" and ema9 > ema21 and 45 <= rsi <= 63:
         if prev["close"] <= orb_high < last["close"] and body > rng * 0.45:
             cand_sig, cand_name, score = "BUY_CE", "15m ORB Breakout", 25 + 20 + trend_adx_pts + body_pts + time_pts
 
     if not cand_sig:
-        if htf_trend == "BULLISH" and ema9 > ema21 and 45 <= rsi <= 68 and last["close"] > ema9 and last["low"] <= ema9 * 1.0015 and last["close"] > prev_swing_high:
+        if htf_trend == "BULLISH" and ema9 > ema21 and 45 <= rsi <= 63 and last["close"] > ema9 and last["low"] <= ema9 * 1.0015 and last["close"] > prev_swing_high:
             if not orb_high or last["close"] > orb_high:
                 cand_sig, cand_name, score = "BUY_CE", "15m+5m Bull Pullback BOS", 25 + 20 + trend_adx_pts + body_pts + time_pts
-        elif htf_trend == "BEARISH" and ema9 < ema21 and 32 <= rsi <= 55 and last["close"] < ema9 and last["high"] >= ema9 * 0.9985 and last["close"] < prev_swing_low:
+        elif htf_trend == "BEARISH" and ema9 < ema21 and 37 <= rsi <= 55 and last["close"] < ema9 and last["high"] >= ema9 * 0.9985 and last["close"] < prev_swing_low:
             if not orb_low or last["close"] < orb_low:
                 cand_sig, cand_name, score = "BUY_PE", "15m+5m Bear Pullback BOS", 25 + 20 + trend_adx_pts + body_pts + time_pts
 

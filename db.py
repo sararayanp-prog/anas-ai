@@ -46,7 +46,7 @@ def init_db():
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
-    for col in ("active_symbol VARCHAR(20) DEFAULT 'ALL'", "dhan_token TEXT DEFAULT ''", "last_brief_date VARCHAR(20) DEFAULT ''", "last_token_date VARCHAR(20) DEFAULT ''", "last_audit_date VARCHAR(20) DEFAULT ''", "paused_setups TEXT DEFAULT ''", "dynamic_min_adx NUMERIC(5, 2) DEFAULT 20.00", "vapid_public TEXT DEFAULT ''", "vapid_private TEXT DEFAULT ''", "kill_baseline NUMERIC(12, 2) DEFAULT 0.00", "kill_baseline_date VARCHAR(20) DEFAULT ''"):
+    for col in ("active_symbol VARCHAR(20) DEFAULT 'ALL'", "dhan_token TEXT DEFAULT ''", "last_brief_date VARCHAR(20) DEFAULT ''", "last_token_date VARCHAR(20) DEFAULT ''", "last_audit_date VARCHAR(20) DEFAULT ''", "paused_setups TEXT DEFAULT ''", "dynamic_min_adx NUMERIC(5, 2) DEFAULT 20.00", "vapid_public TEXT DEFAULT ''", "vapid_private TEXT DEFAULT ''", "kill_baseline NUMERIC(12, 2) DEFAULT 0.00", "kill_baseline_date VARCHAR(20) DEFAULT ''", "engine_owner VARCHAR(80) DEFAULT ''", "engine_lease_until TIMESTAMP"):
         cur.execute(f"ALTER TABLE system_config ADD COLUMN IF NOT EXISTS {col}")
     cur.execute("INSERT INTO system_config (id) VALUES (1) ON CONFLICT (id) DO NOTHING")
     cur.execute("""
@@ -266,6 +266,10 @@ def get_today_pnl():
 def open_virtual_trade(symbol, instrument, side, reason, entry, sl, target, qty, is_expiry, spot_ref=0.0):
     conn = get_conn()
     cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM trades_journal WHERE instrument = %s AND status = 'OPEN'", (instrument,))
+    if cur.fetchone()[0] > 0:
+        conn.close()
+        return None
     cur.execute("INSERT INTO trades_journal (symbol, instrument, side, setup_reason, entry_price, stop_loss, target_price, trailing_sl, qty, is_expiry_day, spot_ref) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id", (symbol, instrument, side, reason, entry, sl, target, sl, qty, is_expiry, spot_ref))
     trade_id = cur.fetchone()[0]
     conn.commit()
@@ -291,7 +295,11 @@ def close_virtual_trade(trade_id, exit_price, gross_pnl):
     net_pnl = round(gross_pnl - 55.0, 2)
     conn = get_conn()
     cur = conn.cursor()
-    cur.execute("UPDATE trades_journal SET exit_price = %s, pnl_net = %s, status = 'CLOSED', closed_at = NOW() WHERE id = %s", (exit_price, net_pnl, trade_id))
+    cur.execute("UPDATE trades_journal SET exit_price = %s, pnl_net = %s, status = 'CLOSED', closed_at = NOW() WHERE id = %s AND status = 'OPEN' RETURNING id", (exit_price, net_pnl, trade_id))
+    if cur.fetchone() is None:
+        conn.rollback()
+        conn.close()
+        return 0.0
     if net_pnl > 0:
         cur.execute("UPDATE system_config SET safe_vault_profit = safe_vault_profit + %s, active_capital = active_capital + %s WHERE id = 1", (round(net_pnl * 0.60, 2), round(net_pnl * 0.40, 2)))
     else:
@@ -315,3 +323,18 @@ def get_all_trades_export():
     rows = cur.fetchall()
     conn.close()
     return rows
+
+
+def acquire_engine_lease(owner_id: str):
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+        UPDATE system_config
+        SET engine_owner = %s, engine_lease_until = NOW() + INTERVAL '25 seconds'
+        WHERE id = 1 AND (engine_owner = %s OR engine_owner = '' OR engine_lease_until IS NULL OR engine_lease_until < NOW())
+        RETURNING engine_owner
+    """, (owner_id, owner_id))
+    ok = cur.fetchone() is not None
+    conn.commit()
+    conn.close()
+    return ok
