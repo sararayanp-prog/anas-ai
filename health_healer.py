@@ -1,3 +1,4 @@
+import jarvis_doctor
 import re
 import time
 import db
@@ -35,6 +36,9 @@ def check_data_firewall(spot: float, candles: list):
 
 def heal_runtime_error(source: str, err, alert_fn=None):
     global _consecutive_errors
+    if jarvis_doctor.try_instant_cure(source, str(err), alert_fn):
+        _consecutive_errors = 0
+        return 1
     _consecutive_errors += 1
     free_market._cache.clear()
     healed_action = "Cleared feed cache & auto-retried"

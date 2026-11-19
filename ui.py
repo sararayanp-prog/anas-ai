@@ -1,7 +1,7 @@
 DASHBOARD_HTML = """<!DOCTYPE html>
 <html>
 <head>
-  <title>ANAS AI - Pro v10.1 FAST</title>
+  <title>ANAS AI - Pro v10.2 DOCTOR</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
   <meta name="theme-color" content="#0b0f19">
   <link rel="manifest" href="/manifest.json"><link rel="icon" href="/icon-192.png">
@@ -77,7 +77,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   <div class="topbar">
     <div style="display:flex;align-items:center;gap:10px;">
       <button class="menu-btn" onclick="toggleMenu()">☰</button>
-      <div style="font-size:17px;font-weight:bold;">⚡ ANAS AI <span style="font-size:11px;color:#38bdf8;">v10.1 FAST</span></div>
+      <div style="font-size:17px;font-weight:bold;">⚡ ANAS AI <span style="font-size:11px;color:#38bdf8;">v10.2 DOCTOR</span></div>
     </div>
     <div id="kill-slot">
       <a href="/kill/on" class="btn" style="background:#dc2626;margin:0;padding:7px 12px;">🚨 KILL</a>

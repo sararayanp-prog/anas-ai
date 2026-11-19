@@ -18,6 +18,7 @@ import dhan_bridge
 import free_market
 import push_service
 import health_healer
+import jarvis_doctor
 import backtester
 from structure_engine import analyze_market_structure, ist_now, is_expiry_for_index, check_structure_invalidation
 from telegram_alert import send_telegram
@@ -462,12 +463,14 @@ def anas_trading_loop():
             continue
         time.sleep(5)
 
-def ensure_engine_alive():
+def ensure_engine_alive(force_restart: bool = False):
     global _engine_pid, _engine_thread
     cur_pid = os.getpid()
     with _engine_lock:
-        if _engine_pid != cur_pid or _engine_thread is None or not _engine_thread.is_alive():
+        if force_restart or _engine_pid != cur_pid or _engine_thread is None or not _engine_thread.is_alive():
             db.init_db()
+            db.repair_schema()
+            jarvis_doctor.start_doctor_once(runtime_status, ensure_engine_alive, broadcast_alert)
             push_service.ensure_vapid_keys()
             _engine_thread = threading.Thread(target=anas_trading_loop, daemon=True)
             _engine_thread.start()

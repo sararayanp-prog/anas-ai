@@ -377,3 +377,41 @@ def get_dashboard_bundle():
     trades = cur.fetchall()
     conn.close()
     return s, today_pnl, int(an[0] or 0), int(an[1] or 0), trades
+
+def repair_schema():
+    conn = get_conn()
+    cur = conn.cursor()
+    for col in (
+        "active_symbol VARCHAR(20) DEFAULT 'ALL'",
+        "dhan_token TEXT DEFAULT ''",
+        "last_brief_date VARCHAR(20) DEFAULT ''",
+        "last_token_date VARCHAR(20) DEFAULT ''",
+        "last_audit_date VARCHAR(20) DEFAULT ''",
+        "paused_setups TEXT DEFAULT ''",
+        "dynamic_min_adx NUMERIC(5, 2) DEFAULT 20.00",
+        "vapid_public TEXT DEFAULT ''",
+        "vapid_private TEXT DEFAULT ''",
+        "kill_baseline NUMERIC(12, 2) DEFAULT 0.00",
+        "kill_baseline_date VARCHAR(20) DEFAULT ''",
+        "engine_owner VARCHAR(80) DEFAULT ''",
+        "engine_lease_until TIMESTAMP",
+        "kill_date VARCHAR(20) DEFAULT ''",
+        "peak_capital NUMERIC(12, 2) DEFAULT 50000.00"
+    ):
+        cur.execute(f"ALTER TABLE system_config ADD COLUMN IF NOT EXISTS {col}")
+    cur.execute("ALTER TABLE trades_journal ADD COLUMN IF NOT EXISTS spot_ref NUMERIC(10, 2) DEFAULT 0.00")
+    conn.commit()
+    conn.close()
+
+def close_zombie_trades():
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+        UPDATE trades_journal SET status = 'CLOSED', exit_price = entry_price, pnl_net = 0.00, closed_at = NOW()
+        WHERE status = 'OPEN' AND DATE(opened_at + INTERVAL '330 minutes') < DATE(NOW() + INTERVAL '330 minutes')
+        RETURNING symbol
+    """)
+    rows = cur.fetchall()
+    conn.commit()
+    conn.close()
+    return [r[0] for r in rows]
