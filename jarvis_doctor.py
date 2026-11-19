@@ -14,10 +14,10 @@ def try_instant_cure(source: str, err_str: str, alert_fn=None):
         try:
             db.init_db()
             db.repair_schema()
-            msg = f"Auto-repaired missing DB schema: {err_str[:80]}"
+            msg = f"Auto-repaired DB schema: {err_str[:80]}"
             db.log_health("CURED", "JARVIS_DOCTOR", err_str, msg)
             if alert_fn:
-                alert_fn("💊 JARVIS DOCTOR CURED BUG!", msg, f"💊 <b>JARVIS DOCTOR CURED:</b>\n{msg}")
+                alert_fn("💊 JARVIS DOCTOR CURED!", msg, f"💊 <b>JARVIS DOCTOR CURED:</b>\n{msg}")
             return True
         except Exception:
             pass
@@ -42,7 +42,7 @@ def _doctor_loop(runtime_status, revive_fn, alert_fn):
             zombies = db.close_zombie_trades()
             if zombies:
                 msg = f"Auto-closed overnight trade(s): {', '.join(zombies)}"
-                db.log_health("CURED", "ZOMBIE_CLEANER", "Overnight OPEN trade", msg)
+                db.log_health("CURED", "ZOMBIE_CLEANER", "Overnight OPEN", msg)
                 if alert_fn:
                     alert_fn("💊 ZOMBIE TRADE CLEANED", msg, f"💊 <b>JARVIS DOCTOR:</b> {msg}")
 
