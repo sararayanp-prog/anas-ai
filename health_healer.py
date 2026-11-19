@@ -27,9 +27,8 @@ def check_data_firewall(spot: float, candles: list):
     if not candles or spot <= 0:
         return False, "Empty price/candles"
     last_c = candles[-1]
-    if (time.time() - last_c["ts"]) > 900:
-        free_market._cache.clear()
-        return False, "Stale/Frozen feed (>15m) -> Cache cleared"
+    if (time.time() - last_c["ts"]) > 1800:
+        return False, "Stale/Frozen feed (>30m)"
     if last_c["close"] > 0 and abs(spot - last_c["close"]) / last_c["close"] > 0.025:
         return False, "Abnormal glitch spike (>2.5%) blocked"
     return True, "OK"
