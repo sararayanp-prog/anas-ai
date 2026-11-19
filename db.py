@@ -41,6 +41,8 @@ def init_db():
             last_audit_date VARCHAR(20) DEFAULT '',
             paused_setups TEXT DEFAULT '',
             dynamic_min_adx NUMERIC(5, 2) DEFAULT 20.00,
+            engine_owner VARCHAR(80) DEFAULT '',
+            engine_lease_until TIMESTAMP,
             vapid_public TEXT DEFAULT '',
             vapid_private TEXT DEFAULT '',
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -64,17 +66,23 @@ def init_db():
     cur.execute("ALTER TABLE trades_journal ADD COLUMN IF NOT EXISTS spot_ref NUMERIC(10, 2) DEFAULT 0.00")
     cur.execute("CREATE TABLE IF NOT EXISTS push_subscriptions (id SERIAL PRIMARY KEY, endpoint TEXT UNIQUE NOT NULL, sub_json TEXT NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
     cur.execute("CREATE TABLE IF NOT EXISTS system_logs (id SERIAL PRIMARY KEY, level VARCHAR(20) NOT NULL, source VARCHAR(40) NOT NULL, message TEXT NOT NULL, healed_action TEXT DEFAULT '', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS shadow_trades (
-            id SERIAL PRIMARY KEY, instrument VARCHAR(20) NOT NULL, side VARCHAR(10) NOT NULL,
-            setup_key VARCHAR(120) NOT NULL, entry_price NUMERIC(10, 2) NOT NULL,
-            stop_loss NUMERIC(10, 2) NOT NULL, target_price NUMERIC(10, 2) NOT NULL,
-            spot_ref NUMERIC(10, 2) NOT NULL, result VARCHAR(10) DEFAULT 'OPEN',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
+    cur.execute("CREATE TABLE IF NOT EXISTS shadow_trades (id SERIAL PRIMARY KEY, instrument VARCHAR(20) NOT NULL, side VARCHAR(10) NOT NULL, setup_key VARCHAR(120) NOT NULL, entry_price NUMERIC(10, 2) NOT NULL, stop_loss NUMERIC(10, 2) NOT NULL, target_price NUMERIC(10, 2) NOT NULL, spot_ref NUMERIC(10, 2) NOT NULL, result VARCHAR(10) DEFAULT 'OPEN', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
     conn.commit()
     conn.close()
+
+def acquire_engine_lease(owner_id: str):
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+        UPDATE system_config
+        SET engine_owner = %s, engine_lease_until = NOW() + INTERVAL '25 seconds'
+        WHERE id = 1 AND (engine_owner = %s OR engine_owner = '' OR engine_lease_until IS NULL OR engine_lease_until < NOW())
+        RETURNING engine_owner
+    """, (owner_id, owner_id))
+    ok = cur.fetchone() is not None
+    conn.commit()
+    conn.close()
+    return ok
 
 def open_shadow_trade(instrument: str, side: str, setup_key: str, entry: float, sl: float, target: float, spot_ref: float):
     conn = get_conn()
@@ -323,18 +331,3 @@ def get_all_trades_export():
     rows = cur.fetchall()
     conn.close()
     return rows
-
-
-def acquire_engine_lease(owner_id: str):
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("""
-        UPDATE system_config
-        SET engine_owner = %s, engine_lease_until = NOW() + INTERVAL '25 seconds'
-        WHERE id = 1 AND (engine_owner = %s OR engine_owner = '' OR engine_lease_until IS NULL OR engine_lease_until < NOW())
-        RETURNING engine_owner
-    """, (owner_id, owner_id))
-    ok = cur.fetchone() is not None
-    conn.commit()
-    conn.close()
-    return ok
