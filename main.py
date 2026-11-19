@@ -507,23 +507,31 @@ def api_push_subscribe():
     db.save_push_sub(sub["endpoint"], json.dumps(sub))
     return jsonify({"ok": True})
 
+_state_cache = {"ts": 0.0, "data": None}
+
 @app.route("/api/state")
 def api_state():
-    state = db.get_system_state()
-    today_pnl, stats, trades = db.get_today_pnl(), db.get_analytics(), db.get_recent_trades(12)
-    peak_cap = db.get_peak_capital()
-    t_list = [{"id": t[0], "symbol": t[1], "side": t[2], "setup": t[3], "entry": float(t[4]), "trail_sl": float(t[5]), "target": float(t[6]), "exit": float(t[7]) if t[7] is not None else None, "pnl": float(t[8] or 0), "status": t[9]} for t in trades]
-    sym = state["active_symbol"]
+    now_t = time.time()
+    if _state_cache["data"] and (now_t - _state_cache["ts"]) < 4.0:
+        return jsonify(_state_cache["data"])
+    s, today_pnl, total, wins, trades = db.get_dashboard_bundle()
+    cap, vault, peak_cap = float(s[1]), float(s[2]), float(s[7] or 50000.0)
+    sym = s[5] or "ALL"
+    tok_ok = bool((s[6] or "").strip() or os.getenv("DHAN_ACCESS_TOKEN", "").strip()) and bool(os.getenv("DHAN_CLIENT_ID", "").strip())
     spot_txt = f"S:{runtime_status['spots']['SENSEX']} | BN:{runtime_status['spots']['BANKNIFTY']}" if sym == "ALL" else str(runtime_status["spots"].get(sym, 0))
-    return jsonify({
-        "symbol": sym, "spot_txt": spot_txt, "mode": state["mode"],
-        "kill_switch": state["kill_switch"], "is_expiry": runtime_status["is_expiry"],
-        "dhan_ok": dhan_bridge.is_dhan_configured(), "brain": f"{runtime_status['last_msg']} (Ticks:{runtime_status['ticks']})",
-        "capital": state["active_capital"], "vault": state["safe_vault"],
-        "today_pnl": today_pnl, "wins": stats["wins"], "total": stats["total"], "win_rate": stats["win_rate"],
-        "armor_pct": round(min((state["active_capital"] / max(peak_cap, 1.0)) * 100.0, 100.0), 1),
-        "sniper": state["active_capital"] < (peak_cap * 0.97), "trades": t_list
-    })
+    payload = {
+        "symbol": sym, "spot_txt": spot_txt, "mode": s[0],
+        "kill_switch": bool(s[4]), "is_expiry": runtime_status["is_expiry"],
+        "dhan_ok": tok_ok, "brain": f"{runtime_status['last_msg']} (Ticks:{runtime_status['ticks']})",
+        "capital": cap, "vault": vault, "today_pnl": today_pnl,
+        "wins": wins, "total": total, "win_rate": round((wins / total) * 100.0, 1) if total > 0 else 0.0,
+        "armor_pct": round(min((cap / max(peak_cap, 1.0)) * 100.0, 100.0), 1),
+        "sniper": cap < (peak_cap * 0.97),
+        "trades": [{"id": t[0], "symbol": t[1], "side": t[2], "setup": t[3], "entry": float(t[4]), "trail_sl": float(t[5]), "target": float(t[6]), "exit": float(t[7]) if t[7] is not None else None, "pnl": float(t[8] or 0), "status": t[9]} for t in trades]
+    }
+    _state_cache["ts"] = now_t
+    _state_cache["data"] = payload
+    return jsonify(payload)
 
 @app.route("/")
 def dashboard():

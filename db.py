@@ -363,3 +363,17 @@ def auto_unlock_new_day(today_str: str):
     conn.commit()
     conn.close()
     return unlocked
+
+def get_dashboard_bundle():
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT trading_mode, active_capital, safe_vault_profit, daily_max_loss_pct, kill_switch, active_symbol, dhan_token, COALESCE(peak_capital, 50000.00) FROM system_config WHERE id = 1")
+    s = cur.fetchone()
+    cur.execute("SELECT COALESCE(SUM(pnl_net), 0) FROM trades_journal WHERE status = 'CLOSED' AND DATE(opened_at + INTERVAL '330 minutes') = DATE(NOW() + INTERVAL '330 minutes')")
+    today_pnl = float(cur.fetchone()[0])
+    cur.execute("SELECT COUNT(*) FILTER (WHERE status = 'CLOSED'), COUNT(*) FILTER (WHERE status = 'CLOSED' AND pnl_net > 0) FROM trades_journal")
+    an = cur.fetchone()
+    cur.execute("SELECT id, symbol, side, setup_reason, entry_price, trailing_sl, target_price, exit_price, pnl_net, status FROM trades_journal ORDER BY id DESC LIMIT 12")
+    trades = cur.fetchall()
+    conn.close()
+    return s, today_pnl, int(an[0] or 0), int(an[1] or 0), trades

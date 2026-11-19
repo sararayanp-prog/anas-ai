@@ -1,7 +1,7 @@
 DASHBOARD_HTML = """<!DOCTYPE html>
 <html>
 <head>
-  <title>ANAS AI - Pro v10.0 IQ</title>
+  <title>ANAS AI - Pro v10.1 FAST</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
   <meta name="theme-color" content="#0b0f19">
   <link rel="manifest" href="/manifest.json"><link rel="icon" href="/icon-192.png">
@@ -77,7 +77,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   <div class="topbar">
     <div style="display:flex;align-items:center;gap:10px;">
       <button class="menu-btn" onclick="toggleMenu()">☰</button>
-      <div style="font-size:17px;font-weight:bold;">⚡ ANAS AI <span style="font-size:11px;color:#38bdf8;">v10.0 IQ</span></div>
+      <div style="font-size:17px;font-weight:bold;">⚡ ANAS AI <span style="font-size:11px;color:#38bdf8;">v10.1 FAST</span></div>
     </div>
     <div id="kill-slot">
       <a href="/kill/on" class="btn" style="background:#dc2626;margin:0;padding:7px 12px;">🚨 KILL</a>
@@ -116,7 +116,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
         const o = ctx.createOscillator(), g = ctx.createGain();
         o.type = 'sine'; o.frequency.value = 880; g.gain.setValueAtTime(0.15, ctx.currentTime);
         o.connect(g); g.connect(ctx.destination); o.start(); o.stop(ctx.currentTime + 0.18);
-      } catch (e) {}
+      } catch (e) { document.getElementById('brain-line').textContent = 'Sync retry: ' + e.message; }
     }
     function urlB64ToUint8(b64) {
       const p = '='.repeat((4 - b64.length % 4) % 4);
@@ -162,7 +162,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
         document.getElementById('trades-body').innerHTML = d.trades.length ? d.trades.map(t =>
           `<tr><td>${t.symbol}</td><td>${t.side}</td><td>${t.setup}</td><td>₹${t.entry}</td><td>₹${t.trail_sl}</td><td>₹${t.target}</td><td>${t.exit !== null ? '₹'+t.exit : '-'}</td><td style="color:${t.pnl>=0?'#22c55e':'#ef4444'};font-weight:bold;">₹${t.pnl}</td><td>${t.status}</td></tr>`
         ).join('') : '<tr><td colspan="9" style="text-align:center;color:#94a3b8;">No trades yet — Scanning market...</td></tr>';
-      } catch (e) {}
+      } catch (e) { document.getElementById('brain-line').textContent = 'Sync retry: ' + e.message; }
     }
     refreshState(); setInterval(refreshState, 5000);
   </script>
