@@ -191,6 +191,7 @@ def anas_trading_loop():
 
             if check_and_trigger_kill(state, today_str):
                 runtime_status["last_msg"] = "KILL SWITCH ACTIVE (Kal auto-unlock hoga)"
+                db.publish_live_status(my_owner, "--", runtime_status["last_msg"], runtime_status["ticks"], runtime_status["is_expiry"])
                 health_healer.reset_error_streak()
                 time.sleep(5)
                 continue
@@ -245,7 +246,9 @@ def anas_trading_loop():
                     if time.time() - last_closed_sync > 180:
                         sync_real_spots_once()
                         last_closed_sync = time.time()
+                    s_txt = f"S:{runtime_status['spots']['SENSEX']} | BN:{runtime_status['spots']['BANKNIFTY']}" if active_sym == "ALL" else str(runtime_status["spots"].get(active_sym, 0))
                     runtime_status["last_msg"] = "Market Closed (09:15 - 15:30 IST Mon-Fri)"
+                    db.publish_live_status(my_owner, s_txt, runtime_status["last_msg"], runtime_status["ticks"], runtime_status["is_expiry"])
                     health_healer.reset_error_streak()
                     time.sleep(15)
                     continue
@@ -347,6 +350,8 @@ def anas_trading_loop():
                                     runtime_status["last_msg"] = f"[{s}] {res['reason']}"
                         if msgs and len(scan_list) > 1:
                             runtime_status["last_msg"] = "ALL: " + " | ".join(msgs)
+                s_txt = f"S:{runtime_status['spots']['SENSEX']} | BN:{runtime_status['spots']['BANKNIFTY']}" if active_sym == "ALL" else str(runtime_status["spots"].get(active_sym, 0))
+                db.publish_live_status(my_owner, s_txt, runtime_status["last_msg"], runtime_status["ticks"], runtime_status["is_expiry"])
                 health_healer.reset_error_streak()
                 time.sleep(15)
                 continue
@@ -357,7 +362,9 @@ def anas_trading_loop():
                     time.sleep(5)
                     continue
                 if not is_indian_market_open():
+                    s_txt = f"S:{runtime_status['spots']['SENSEX']} | BN:{runtime_status['spots']['BANKNIFTY']}" if active_sym == "ALL" else str(runtime_status["spots"].get(active_sym, 0))
                     runtime_status["last_msg"] = "Market Closed (09:15 - 15:30 IST Mon-Fri)"
+                    db.publish_live_status(my_owner, s_txt, runtime_status["last_msg"], runtime_status["ticks"], runtime_status["is_expiry"])
                     health_healer.reset_error_streak()
                     time.sleep(15)
                     continue
@@ -455,6 +462,8 @@ def anas_trading_loop():
                 time.sleep(5)
                 continue
 
+            s_txt = f"S:{runtime_status['spots']['SENSEX']} | BN:{runtime_status['spots']['BANKNIFTY']}" if active_sym == "ALL" else str(runtime_status["spots"].get(active_sym, 0))
+            db.publish_live_status(my_owner, s_txt, runtime_status["last_msg"], runtime_status["ticks"], runtime_status["is_expiry"])
             health_healer.reset_error_streak()
         except Exception as e:
             runtime_status["last_msg"] = f"Healed Error: {str(e)[:80]}"
@@ -523,9 +532,9 @@ def api_state():
     tok_ok = bool((s[6] or "").strip() or os.getenv("DHAN_ACCESS_TOKEN", "").strip()) and bool(os.getenv("DHAN_CLIENT_ID", "").strip())
     spot_txt = f"S:{runtime_status['spots']['SENSEX']} | BN:{runtime_status['spots']['BANKNIFTY']}" if sym == "ALL" else str(runtime_status["spots"].get(sym, 0))
     payload = {
-        "symbol": sym, "spot_txt": spot_txt, "mode": s[0],
-        "kill_switch": bool(s[4]), "is_expiry": runtime_status["is_expiry"],
-        "dhan_ok": tok_ok, "brain": f"{runtime_status['last_msg']} (Ticks:{runtime_status['ticks']})",
+        "symbol": sym, "spot_txt": (s[8] or spot_txt), "mode": s[0],
+        "kill_switch": bool(s[4]), "is_expiry": bool(s[11]) if s[8] else runtime_status["is_expiry"],
+        "dhan_ok": tok_ok, "brain": f"{(s[9] or runtime_status['last_msg'])} (Ticks:{s[10] or runtime_status['ticks']})",
         "capital": cap, "vault": vault, "today_pnl": today_pnl,
         "wins": wins, "total": total, "win_rate": round((wins / total) * 100.0, 1) if total > 0 else 0.0,
         "armor_pct": round(min((cap / max(peak_cap, 1.0)) * 100.0, 100.0), 1),

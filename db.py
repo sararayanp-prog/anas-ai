@@ -367,7 +367,7 @@ def auto_unlock_new_day(today_str: str):
 def get_dashboard_bundle():
     conn = get_conn()
     cur = conn.cursor()
-    cur.execute("SELECT trading_mode, active_capital, safe_vault_profit, daily_max_loss_pct, kill_switch, active_symbol, dhan_token, COALESCE(peak_capital, 50000.00) FROM system_config WHERE id = 1")
+    cur.execute("SELECT trading_mode, active_capital, safe_vault_profit, daily_max_loss_pct, kill_switch, active_symbol, dhan_token, COALESCE(peak_capital, 50000.00), COALESCE(live_spot_txt, ''), COALESCE(live_brain, ''), COALESCE(live_ticks, 0), COALESCE(live_is_expiry, FALSE) FROM system_config WHERE id = 1")
     s = cur.fetchone()
     cur.execute("SELECT COALESCE(SUM(pnl_net), 0) FROM trades_journal WHERE status = 'CLOSED' AND DATE(opened_at + INTERVAL '330 minutes') = DATE(NOW() + INTERVAL '330 minutes')")
     today_pnl = float(cur.fetchone()[0])
@@ -396,7 +396,11 @@ def repair_schema():
         "engine_owner VARCHAR(80) DEFAULT ''",
         "engine_lease_until TIMESTAMP",
         "kill_date VARCHAR(20) DEFAULT ''",
-        "peak_capital NUMERIC(12, 2) DEFAULT 50000.00"
+        "peak_capital NUMERIC(12, 2) DEFAULT 50000.00",
+        "live_spot_txt VARCHAR(80) DEFAULT ''",
+        "live_brain TEXT DEFAULT ''",
+        "live_ticks INT DEFAULT 0",
+        "live_is_expiry BOOLEAN DEFAULT FALSE"
     ):
         cur.execute(f"ALTER TABLE system_config ADD COLUMN IF NOT EXISTS {col}")
     cur.execute("ALTER TABLE trades_journal ADD COLUMN IF NOT EXISTS spot_ref NUMERIC(10, 2) DEFAULT 0.00")
@@ -434,7 +438,11 @@ def repair_schema():
         "engine_owner VARCHAR(80) DEFAULT ''",
         "engine_lease_until TIMESTAMP",
         "kill_date VARCHAR(20) DEFAULT ''",
-        "peak_capital NUMERIC(12, 2) DEFAULT 50000.00"
+        "peak_capital NUMERIC(12, 2) DEFAULT 50000.00",
+        "live_spot_txt VARCHAR(80) DEFAULT ''",
+        "live_brain TEXT DEFAULT ''",
+        "live_ticks INT DEFAULT 0",
+        "live_is_expiry BOOLEAN DEFAULT FALSE"
     ):
         cur.execute(f"ALTER TABLE system_config ADD COLUMN IF NOT EXISTS {col}")
     cur.execute("ALTER TABLE trades_journal ADD COLUMN IF NOT EXISTS spot_ref NUMERIC(10, 2) DEFAULT 0.00")
@@ -453,3 +461,18 @@ def close_zombie_trades():
     conn.commit()
     conn.close()
     return [r[0] for r in rows]
+
+
+def publish_live_status(owner_id: str, spot_txt: str, brain: str, ticks: int, is_expiry: bool):
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE system_config
+            SET live_spot_txt = %s, live_brain = %s, live_ticks = %s, live_is_expiry = %s
+            WHERE id = 1 AND engine_owner = %s
+        """, (spot_txt[:80], brain[:250], ticks, is_expiry, owner_id))
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
