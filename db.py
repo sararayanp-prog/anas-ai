@@ -188,6 +188,14 @@ def delete_push_sub(endpoint: str):
     conn.commit()
     conn.close()
 
+def get_peak_capital():
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT COALESCE(peak_capital, 50000.00) FROM system_config WHERE id = 1")
+    v = float(cur.fetchone()[0])
+    conn.close()
+    return v
+
 def get_system_state():
     conn = get_conn()
     cur = conn.cursor()
@@ -224,6 +232,7 @@ def unlock_kill_switch(current_pnl: float):
 def reset_paper_data():
     conn = get_conn()
     cur = conn.cursor()
+    cur.execute("UPDATE system_config SET peak_capital = 50000.00 WHERE id = 1")
     cur.execute("DELETE FROM trades_journal")
     cur.execute("DELETE FROM shadow_trades")
     cur.execute("UPDATE system_config SET active_capital = 50000.00, safe_vault_profit = 0.00, kill_switch = FALSE, kill_baseline = 0.00, kill_baseline_date = '', paused_setups = '', dynamic_min_adx = 20.00, updated_at = NOW() WHERE id = 1")
@@ -312,6 +321,7 @@ def close_virtual_trade(trade_id, exit_price, gross_pnl):
         cur.execute("UPDATE system_config SET safe_vault_profit = safe_vault_profit + %s, active_capital = active_capital + %s WHERE id = 1", (round(net_pnl * 0.60, 2), round(net_pnl * 0.40, 2)))
     else:
         cur.execute("UPDATE system_config SET active_capital = active_capital + %s WHERE id = 1", (net_pnl,))
+    cur.execute("UPDATE system_config SET peak_capital = GREATEST(COALESCE(peak_capital, 50000.00), active_capital) WHERE id = 1")
     conn.commit()
     conn.close()
     return net_pnl

@@ -74,7 +74,19 @@ def extract_today_orb(candles):
         return max(b["high"] for b in orb_bars), min(b["low"] for b in orb_bars)
     return None, None
 
-def analyze_market_structure(candles, pdh: float, pdl: float, is_expiry: bool = False, check_hours: bool = True, base_min_adx: float = 20.0, now_dt=None):
+def check_structure_invalidation(candles, side: str):
+    """EMA-21 Structure Invalidation: closed candle opposite close ho toh early cut"""
+    if len(candles) < 25:
+        return False
+    ema21 = calc_ema([c["close"] for c in candles[-45:]], 21)
+    last_close = candles[-1]["close"]
+    if side == "BUY_CE" and last_close < ema21:
+        return True
+    if side == "BUY_PE" and last_close > ema21:
+        return True
+    return False
+
+def analyze_market_structure(candles, pdh: float, pdl: float, is_expiry: bool = False, check_hours: bool = True, base_min_adx: float = 20.0, now_dt=None, min_score: int = 75):
     if len(candles) < 35:
         return {"signal": "WAIT", "reason": "Warming up candles (need 35+)", "score": 0, "atr": 20.0, "vol_regime": "NORMAL"}
 
@@ -135,9 +147,9 @@ def analyze_market_structure(candles, pdh: float, pdl: float, is_expiry: bool = 
                 cand_sig, cand_name, score = "BUY_PE", "15m+5m Bear Pullback BOS", 25 + 20 + trend_adx_pts + body_pts + time_pts
 
     if cand_sig:
-        if score >= 75:
+        if score >= min_score:
             return {"signal": cand_sig, "reason": f"{cand_name} | Score:{score} ADX:{adx} RSI:{rsi}", "score": score, "atr": atr, "vol_regime": vol_regime}
-        return {"signal": "WAIT", "reason": f"Low Score ({cand_name}: {score}<75)", "score": score, "atr": atr, "vol_regime": vol_regime}
+        return {"signal": "WAIT", "reason": f"IQ Guard ({cand_name}: {score}<{min_score})", "score": score, "atr": atr, "vol_regime": vol_regime}
 
     orb_txt = f"ORB:{orb_low}-{orb_high}" if orb_high else "ORB:Wait"
     return {"signal": "WAIT", "reason": f"HTF:{htf_trend} ADX:{adx} RSI:{rsi} {orb_txt}", "score": 0, "atr": atr, "vol_regime": vol_regime}
