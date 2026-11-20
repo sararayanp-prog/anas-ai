@@ -509,3 +509,23 @@ def set_bonus_alpha(strat_id: str, week_str: str):
     cur.execute("UPDATE system_config SET bonus_alpha = %s, last_alpha_week = %s WHERE id = 1", (strat_id, week_str))
     conn.commit()
     conn.close()
+
+def auto_unlock_new_day():
+    """Daily PnL aur Kill Switch reset at 9:00 AM"""
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE app_state
+            SET today_pnl = 0.0,
+                wins = 0,
+                total = 0,
+                kill_switch = FALSE,
+                kill_switch_color = 'RED',
+                last_reset_date = CURRENT_DATE
+            WHERE id = 1 AND last_reset_date < CURRENT_DATE;
+        """)
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print("[DB AUTO-UNLOCK ERROR]:", e)
