@@ -14,6 +14,8 @@ from dotenv import load_dotenv
 from flask import Flask, redirect, request, jsonify, Response
 import ui
 import saas_pages
+import saas_db
+from saas_routes import saas_bp
 import db
 import dhan_bridge
 import free_market
@@ -29,6 +31,8 @@ from ai_analyst import generate_premarket_brief, audit_todays_trades
 
 load_dotenv()
 app = Flask(__name__)
+app.secret_key = os.getenv("FLASK_SECRET", os.getenv("ADMIN_PIN", "0401") + "_sarahics_anas_key")
+app.register_blueprint(saas_bp)
 
 ALL_INDICES = ["SENSEX", "BANKNIFTY"]
 
@@ -495,6 +499,7 @@ def ensure_engine_alive(force_restart: bool = False):
     with _engine_lock:
         if force_restart or _engine_pid != cur_pid or _engine_thread is None or not _engine_thread.is_alive():
             db.init_db()
+            saas_db.init_saas_db()
             db.repair_schema()
             jarvis_doctor.start_doctor_once(runtime_status, ensure_engine_alive, broadcast_alert)
             jarvis_agent.start_jarvis_once(broadcast_alert)

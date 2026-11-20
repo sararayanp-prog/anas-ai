@@ -1,7 +1,7 @@
 import os
 
 def _wrap(title, body):
-    phone = os.getenv("SUPPORT_PHONE", "+91-9978982577")
+    phone = os.getenv("SUPPORT_PHONE", "+919978982577")
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -33,7 +33,8 @@ def _wrap(title, body):
       <a href="/about">About</a>
       <a href="/pricing">Pricing</a>
       <a href="/contact">Contact</a>
-      <a href="/terminal" style="background:#0284c7;color:#fff;padding:6px 12px;border-radius:8px;">Terminal</a>
+      <a href="/login">Login</a>
+      <a href="/signup" style="background:#059669;color:#fff;padding:6px 12px;border-radius:8px;">Sign Up</a>
     </div>
   </nav>
   <div class="wrap">{body}</div>
@@ -144,7 +145,7 @@ def refund_page():
     </div>""")
 
 def contact_page():
-    phone = os.getenv("SUPPORT_PHONE", "+91-9978982577")
+    phone = os.getenv("SUPPORT_PHONE", "+919978982577")
     return _wrap("Contact Us", f"""
     <h1>Contact Us</h1>
     <div class="card">
