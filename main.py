@@ -81,6 +81,15 @@ def api_saas_approve():
     return jsonify(res)
 
 
+
+@app.route("/")
+def home_index():
+    if "saas_portal" in globals():
+        return saas_portal()
+    elif "dashboard" in globals():
+        return dashboard()
+    return "<h1>ANAS AI Quant v10.0 Live</h1><p>Trading Bot & SaaS Platform Active!</p>"
+
 if __name__ == "__main__":
     db.init_db()
     saas_db.init_saas_db()
