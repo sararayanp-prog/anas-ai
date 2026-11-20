@@ -47,13 +47,14 @@ def broadcast_alert(title: str, body: str, tg_html: str):
     send_telegram(tg_html)
     push_service.send_web_push(title, body)
 
-def calc_capped_sl_target(opt_entry: float, active_capital: float, lot: int, today_pnl: float = 0.0, spot_atr: float = 20.0, vol_regime: str = "NORMAL", in_sniper: bool = False):
-    max_risk_rs = active_capital * (0.01 if (vol_regime == "HIGH_VOL" or in_sniper) else 0.02)
+def calc_capped_sl_target(opt_entry: float, active_capital: float, lot: int, today_pnl: float = 0.0, spot_atr: float = 20.0, vol_regime: str = "NORMAL", in_sniper: bool = False, sym: str = "SENSEX"):
+    max_risk_rs = active_capital * (0.01 if (vol_regime == "HIGH_VOL" or in_sniper, s if 's' in locals() else inst if 'inst' in locals() else 'SENSEX') else 0.02)
     if today_pnl >= 600.0:
         max_risk_rs = min(max_risk_rs, max(today_pnl * 0.55, 400.0))
+    floor_pts = {"SENSEX": 38.0, "BANKNIFTY": 28.0, "NIFTY": 12.0}.get(sym, 15.0)
     atr_opt_pts = round(spot_atr * 1.5 * 0.5, 2)
-    max_sl_pts = max(round(max_risk_rs / max(lot, 1), 2), 8.0)
-    sl_pts = min(max(atr_opt_pts, 10.0), max_sl_pts)
+    max_sl_pts = max(round(max_risk_rs / max(lot, 1), 2), floor_pts if not in_sniper else floor_pts * 0.7)
+    sl_pts = min(max(atr_opt_pts, floor_pts), max_sl_pts)
     return round(opt_entry - sl_pts, 2), round(opt_entry + (sl_pts * 2.0), 2)
 
 def step_trail_check(tid, tsym, entry, sl, trail_sl, curr_opt):
@@ -198,7 +199,7 @@ def anas_trading_loop():
 
             today_pnl = db.get_today_pnl()
             peak_cap = db.get_peak_capital()
-            in_sniper = state["active_capital"] < (peak_cap * 0.97)
+            in_sniper = state["active_capital"] < (peak_cap * 0.975)
             min_sc = 85 if in_sniper else 75
             mode = state["mode"]
             open_trades = db.get_open_trades()
@@ -236,7 +237,7 @@ def anas_trading_loop():
                         if res["signal"] in ("BUY_CE", "BUY_PE"):
                             side = res["signal"]
                             opt_entry = 140.0
-                            opt_sl, opt_target = calc_capped_sl_target(opt_entry, state["active_capital"], 75, today_pnl, res.get("atr", 20.0), res.get("vol_regime", "NORMAL"), in_sniper)
+                            opt_sl, opt_target = calc_capped_sl_target(opt_entry, state["active_capital"], 75, today_pnl, res.get("atr", 20.0), res.get("vol_regime", "NORMAL"), in_sniper, s if 's' in locals() else inst if 'inst' in locals() else 'SENSEX')
                             opt_sym = f"NIFTY {int(round(spot / 50.0) * 50)} {'CE' if side == 'BUY_CE' else 'PE'}"
                             if db.open_virtual_trade(opt_sym, "NIFTY", side, f"[SIM] {res['reason']}", opt_entry, opt_sl, opt_target, 75, False, spot):
                                 broadcast_alert(f"🟢 SIGNAL (SIM): {opt_sym}", f"Entry ₹{opt_entry} | SL ₹{opt_sl} | Target ₹{opt_target}", f"🟢 <b>SIM SIGNAL</b>\n<b>{opt_sym}</b>\nEntry: ₹{opt_entry} | SL: ₹{opt_sl} | Target: ₹{opt_target}")
@@ -334,13 +335,13 @@ def anas_trading_loop():
                                 if res["signal"] in ("BUY_CE", "BUY_PE") and health_healer.is_setup_paused(s, res["reason"], state.get("paused_setups", "")):
                                     pk = health_healer.make_pair_key(s, res["reason"])
                                     pe = {"NIFTY": 140.0, "BANKNIFTY": 320.0, "SENSEX": 350.0}.get(s, 300.0)
-                                    psl, ptgt = calc_capped_sl_target(pe, state["active_capital"], lot, today_pnl, res.get("atr", 20.0), res.get("vol_regime", "NORMAL"), in_sniper)
+                                    psl, ptgt = calc_capped_sl_target(pe, state["active_capital"], lot, today_pnl, res.get("atr", 20.0), res.get("vol_regime", "NORMAL"), in_sniper, s if 's' in locals() else inst if 'inst' in locals() else 'SENSEX')
                                     db.open_shadow_trade(s, res["signal"], pk, pe, psl, ptgt, spot)
                                     runtime_status["last_msg"] = f"[{s}] Shadow Test ({pk})"
                                 elif res["signal"] in ("BUY_CE", "BUY_PE"):
                                     side = res["signal"]
                                     opt_entry = {"NIFTY": 140.0, "BANKNIFTY": 320.0, "SENSEX": 350.0}.get(s, 140.0)
-                                    opt_sl, opt_target = calc_capped_sl_target(opt_entry, state["active_capital"], lot, today_pnl, res.get("atr", 20.0), res.get("vol_regime", "NORMAL"), in_sniper)
+                                    opt_sl, opt_target = calc_capped_sl_target(opt_entry, state["active_capital"], lot, today_pnl, res.get("atr", 20.0), res.get("vol_regime", "NORMAL"), in_sniper, s if 's' in locals() else inst if 'inst' in locals() else 'SENSEX')
                                     opt_sym = f"{s} {int(round(spot / step) * step)} {'CE' if side == 'BUY_CE' else 'PE'}"
                                     if db.open_virtual_trade(opt_sym, s, side, f"[REAL] {res['reason']}", opt_entry, opt_sl, opt_target, lot, is_exp, spot):
                                         broadcast_alert(f"🟢 REAL SIGNAL: {opt_sym}", f"Spot {spot} | Proxy ₹{opt_entry} | SL ₹{opt_sl} | Target ₹{opt_target}", f"🟢 <b>ANAS AI REAL SIGNAL</b>\n<b>{opt_sym}</b> {'⚠️ EXPIRY' if is_exp else ''}\nSpot: {spot} | Proxy: ₹{opt_entry} | SL: ₹{opt_sl} | Target: ₹{opt_target}\nSetup: {res['reason']}")
@@ -453,7 +454,7 @@ def anas_trading_loop():
                                     if not oi_ok:
                                         runtime_status["last_msg"] = f"[{s}] Skipped by OI Filter (PCR={pcr})"
                                     elif opt_entry > 10:
-                                        opt_sl, opt_target = calc_capped_sl_target(opt_entry, state["active_capital"], lot, today_pnl, res.get("atr", 20.0), res.get("vol_regime", "NORMAL"), in_sniper)
+                                        opt_sl, opt_target = calc_capped_sl_target(opt_entry, state["active_capital"], lot, today_pnl, res.get("atr", 20.0), res.get("vol_regime", "NORMAL"), in_sniper, s if 's' in locals() else inst if 'inst' in locals() else 'SENSEX')
                                         opt_sym = f"{s} {strike} {'CE' if side == 'BUY_CE' else 'PE'}"
                                         if db.open_virtual_trade(opt_sym, s, side, f"[DHAN] {res['reason']} | PCR:{pcr}", opt_entry, opt_sl, opt_target, lot, is_exp, runtime_status["spots"][s]):
                                             broadcast_alert(f"🟢 LIVE SIGNAL: {opt_sym}", f"Entry ₹{opt_entry} | SL ₹{opt_sl} | Target ₹{opt_target} | PCR {pcr}", f"🟢 <b>ANAS AI LIVE SIGNAL</b>\n<b>{opt_sym}</b> {'⚠️ EXPIRY' if is_exp else ''}\nEntry: ₹{opt_entry} | SL: ₹{opt_sl} | Target: ₹{opt_target}\nPCR: {pcr} | Setup: {res['reason']}")
@@ -538,7 +539,7 @@ def api_state():
         "capital": cap, "vault": vault, "today_pnl": today_pnl,
         "wins": wins, "total": total, "win_rate": round((wins / total) * 100.0, 1) if total > 0 else 0.0,
         "armor_pct": round(min((cap / max(peak_cap, 1.0)) * 100.0, 100.0), 1),
-        "sniper": cap < (peak_cap * 0.97),
+        "sniper": cap < (peak_cap * 0.975),
         "trades": [{"id": t[0], "symbol": t[1], "side": t[2], "setup": t[3], "entry": float(t[4]), "trail_sl": float(t[5]), "target": float(t[6]), "exit": float(t[7]) if t[7] is not None else None, "pnl": float(t[8] or 0), "status": t[9]} for t in trades]
     }
     _state_cache["ts"] = now_t

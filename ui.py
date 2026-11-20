@@ -1,7 +1,7 @@
 DASHBOARD_HTML = """<!DOCTYPE html>
 <html>
 <head>
-  <title>ANAS AI - Pro v10.3 SYNC</title>
+  <title>ANAS AI - Pro v10.4 PRO</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
   <meta name="theme-color" content="#0b0f19">
   <link rel="manifest" href="/manifest.json"><link rel="icon" href="/icon-192.png">
@@ -77,10 +77,10 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   <div class="topbar">
     <div style="display:flex;align-items:center;gap:10px;">
       <button class="menu-btn" onclick="toggleMenu()">☰</button>
-      <div style="font-size:17px;font-weight:bold;">⚡ ANAS AI <span style="font-size:11px;color:#38bdf8;">v10.3 SYNC</span></div>
+      <div style="font-size:17px;font-weight:bold;">⚡ ANAS AI <span style="font-size:11px;color:#38bdf8;">v10.4 PRO</span></div>
     </div>
     <div id="kill-slot">
-      <a href="/kill/on" class="btn" style="background:#dc2626;margin:0;padding:7px 12px;">🚨 KILL</a>
+      <a href="/kill/on" class="btn" style="background:#eab308;color:#000;margin:0;padding:7px 12px;">🟡 KILL SWITCH</a>
     </div>
   </div>
 
@@ -140,8 +140,8 @@ DASHBOARD_HTML = """<!DOCTYPE html>
       try {
         const d = await (await fetch('/api/state')).json();
         document.getElementById('kill-slot').innerHTML = d.kill_switch
-          ? '<span class="btn" style="background:#7f1d1d;margin:0;padding:7px 12px;cursor:default;">🔒 LOCKED</span>'
-          : '<a href="/kill/on" class="btn" style="background:#dc2626;margin:0;padding:7px 12px;">🚨 KILL</a>';
+          ? '<span class="btn" style="background:#dc2626;color:#fff;margin:0;padding:7px 12px;cursor:default;">🔴 KILL ON</span>'
+          : '<a href="/kill/on" class="btn" style="background:#eab308;color:#000;margin:0;padding:7px 12px;">🟡 KILL SWITCH</a>';
         document.getElementById('status-line').innerHTML =
           `<b>${d.symbol}</b> (${d.spot_txt}) | <b>${d.mode}</b> | <b>${d.kill_switch ? '🔴 LOCKED' : '🟢 SCANNING'}</b> | ${d.is_expiry ? '⚠️ EXPIRY' : 'Normal'} | ${d.dhan_ok ? '✅ Token OK' : '⏳ Token Pending'}`;
         document.getElementById('brain-line').textContent = 'Brain: ' + d.brain;
