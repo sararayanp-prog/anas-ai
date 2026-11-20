@@ -1,7 +1,7 @@
 DASHBOARD_HTML = """<!DOCTYPE html>
 <html>
 <head>
-  <title>ANAS AI - Pro v11.0 JARVIS</title>
+  <title>ANAS AI - Pro v12.0 ALPHA</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
   <meta name="theme-color" content="#0b0f19">
   <link rel="manifest" href="/manifest.json"><link rel="icon" href="/icon-192.png">
@@ -50,6 +50,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     <a href="/jarvis-scan" class="drawer-btn" style="background:#0ea5e9;">🤖 JARVIS LIVE SCAN</a>
     <a href="/ai-brief" class="drawer-btn" style="background:#6366f1;">🧠 GEMINI BRIEF</a>
     <a href="/ai-audit" class="drawer-btn" style="background:#7c3aed;">📊 AI TRADE AUDIT</a>
+    <a href="/top10" class="drawer-btn" style="background:#d97706;">🏆 TOP 10 LAB</a>
     <a href="/backtest" class="drawer-btn" style="background:#be185d;">🔬 BACKTEST 60D</a>
     <a href="/analytics" class="drawer-btn" style="background:#0d9488;">📈 SETUP STATS</a>
     <a href="/health" class="drawer-btn" style="background:#15803d;">🩺 SYSTEM HEALTH</a>
@@ -78,7 +79,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   <div class="topbar">
     <div style="display:flex;align-items:center;gap:10px;">
       <button class="menu-btn" onclick="toggleMenu()">☰</button>
-      <div style="font-size:17px;font-weight:bold;">⚡ ANAS AI <span style="font-size:11px;color:#38bdf8;">v11.0 JARVIS</span></div>
+      <div style="font-size:17px;font-weight:bold;">⚡ ANAS AI <span style="font-size:11px;color:#38bdf8;">v12.0 ALPHA</span></div>
     </div>
     <div id="kill-slot">
       <a href="/kill/on" class="btn" style="background:#eab308;color:#000;margin:0;padding:7px 12px;">🟡 KILL SWITCH</a>

@@ -70,6 +70,10 @@ def _jarvis_loop(alert_fn):
         now = ist_now()
         if now.weekday() < 5 and 8 <= now.hour <= 15:
             run_jarvis_scan(alert_fn)
+        elif now.weekday() == 5 and 10 <= now.hour <= 12:
+            _, lw = db.get_bonus_alpha()
+            if lw != now.strftime("%Y-W%W"):
+                run_weekly_alpha_rotation(alert_fn)
 
 def start_jarvis_once(alert_fn=None):
     global _jarvis_started
@@ -78,3 +82,22 @@ def start_jarvis_once(alert_fn=None):
             t = threading.Thread(target=_jarvis_loop, args=(alert_fn,), daemon=True)
             t.start()
             _jarvis_started = True
+
+
+def run_weekly_alpha_rotation(alert_fn=None):
+    import strategies_10
+    now = ist_now()
+    week_str = now.strftime("%Y-W%W")
+    try:
+        _, elite = strategies_10.run_top10_leaderboard(("SENSEX", "BANKNIFTY"))
+        if elite and elite["id"] != "S1_IQ_CORE":
+            db.set_bonus_alpha(elite["id"], week_str)
+            msg = f"🏆 JARVIS AUTO-ALPHA: '{elite['name']}' ({elite['symbol']}) PF:{elite['pf']} +{elite['ret_pct']}% -> Enabled!"
+            db.log_health("ALPHA", "JARVIS_LAB", elite["id"], msg)
+            if alert_fn:
+                alert_fn("🏆 JARVIS ALPHA PROMOTED!", msg, f"<b>{msg}</b>")
+            return msg
+        db.set_bonus_alpha("", week_str)
+        return "✅ ANAS IQ Core (#1 Champion) hi active hai."
+    except Exception as e:
+        return f"Alpha Scan Notice: {e}"

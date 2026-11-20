@@ -396,7 +396,7 @@ def repair_schema():
         "engine_owner VARCHAR(80) DEFAULT ''",
         "engine_lease_until TIMESTAMP",
         "kill_date VARCHAR(20) DEFAULT ''",
-        "peak_capital NUMERIC(12, 2) DEFAULT 50000.00",
+        "peak_capital NUMERIC(12, 2) DEFAULT 50000.00", "bonus_alpha VARCHAR(40) DEFAULT ''", "last_alpha_week VARCHAR(20) DEFAULT ''",
         "live_spot_txt VARCHAR(80) DEFAULT ''",
         "live_brain TEXT DEFAULT ''",
         "live_ticks INT DEFAULT 0",
@@ -438,7 +438,7 @@ def repair_schema():
         "engine_owner VARCHAR(80) DEFAULT ''",
         "engine_lease_until TIMESTAMP",
         "kill_date VARCHAR(20) DEFAULT ''",
-        "peak_capital NUMERIC(12, 2) DEFAULT 50000.00",
+        "peak_capital NUMERIC(12, 2) DEFAULT 50000.00", "bonus_alpha VARCHAR(40) DEFAULT ''", "last_alpha_week VARCHAR(20) DEFAULT ''",
         "live_spot_txt VARCHAR(80) DEFAULT ''",
         "live_brain TEXT DEFAULT ''",
         "live_ticks INT DEFAULT 0",
@@ -488,3 +488,24 @@ def get_jarvis_banner():
         return v
     except Exception:
         return "MOMENTUM | NEUTRAL | Monitoring"
+
+
+def get_bonus_alpha():
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("SELECT COALESCE(bonus_alpha, ''), COALESCE(last_alpha_week, '') FROM system_config WHERE id = 1")
+        r = cur.fetchone()
+        conn.close()
+        return (r[0], r[1]) if r else ("", "")
+    except Exception:
+        return ("", "")
+
+def set_bonus_alpha(strat_id: str, week_str: str):
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("ALTER TABLE system_config ADD COLUMN IF NOT EXISTS bonus_alpha VARCHAR(40) DEFAULT ''")
+    cur.execute("ALTER TABLE system_config ADD COLUMN IF NOT EXISTS last_alpha_week VARCHAR(20) DEFAULT ''")
+    cur.execute("UPDATE system_config SET bonus_alpha = %s, last_alpha_week = %s WHERE id = 1", (strat_id, week_str))
+    conn.commit()
+    conn.close()

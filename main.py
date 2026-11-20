@@ -21,6 +21,7 @@ import health_healer
 import jarvis_doctor
 import jarvis_agent
 import backtester
+import strategies_10
 from structure_engine import analyze_market_structure, ist_now, is_expiry_for_index, check_structure_invalidation
 from telegram_alert import send_telegram
 from ai_analyst import generate_premarket_brief, audit_todays_trades
@@ -339,6 +340,12 @@ def anas_trading_loop():
                                 last_eval_ts[s] = latest_ts
                                 is_exp = is_expiry_for_index(s, now_ist)
                                 res = analyze_market_structure(closed_candles, pdh=pdh, pdl=pdl, is_expiry=is_exp, check_hours=True, base_min_adx=state.get("dynamic_min_adx", 20.0), min_score=min_sc)
+                                if res["signal"] == "WAIT":
+                                    b_alpha, _ = db.get_bonus_alpha()
+                                    if b_alpha and b_alpha != "S1_IQ_CORE":
+                                        alt = strategies_10.eval_strategy(b_alpha, closed_candles, pdh, pdl, is_exp, now_ist, min_sc)
+                                        if alt["signal"] in ("BUY_CE", "BUY_PE"):
+                                            res = alt
                                 msgs.append(f"{s}:{res['signal']}")
                                 if res["signal"] in ("BUY_CE", "BUY_PE") and health_healer.is_setup_paused(s, res["reason"], state.get("paused_setups", "")):
                                     pk = health_healer.make_pair_key(s, res["reason"])
@@ -595,6 +602,25 @@ def reset_sim():
         return "<body style='background:#0b0f19;color:#ef4444;padding:20px;font-family:sans-serif;'>❌ Galat PIN!<br><a href='/' style='color:#38bdf8;'>← Back</a></body>"
     db.reset_paper_data()
     return redirect("/")
+
+@app.route("/top10")
+def top10_page():
+    try:
+        rows, elite = strategies_10.run_top10_leaderboard(("SENSEX", "BANKNIFTY"))
+        b_alpha, _ = db.get_bonus_alpha()
+        tr = ""
+        for idx, r in enumerate(rows, 1):
+            c = "#22c55e" if r["net_pnl"] >= 0 else "#ef4444"
+            badge = " 🏆" if (elite and r["id"] == elite["id"] and r["symbol"] == elite["symbol"]) else ""
+            tr += f"<tr><td>#{idx}{badge}</td><td><b>{r['name']}</b><br><span style='font-size:10px;color:#94a3b8;'>{r['desc']}</span></td><td>{r['symbol']}</td><td>{r['wins']}/{r['total']} ({r['wr']}%)</td><td><b>{r['pf']}</b></td><td style='color:{c};font-weight:bold;'>{r['ret_pct']}%<br>(₹{r['net_pnl']:,.0f})</td><td>₹{r['max_dd']:,.0f}</td></tr>"
+        return f"<body style='background:#0b0f19;color:#e2e8f0;font-family:system-ui,sans-serif;padding:14px;'><h2>🏆 JARVIS Top-10 Strategy Lab (60D)</h2><p style='font-size:12px;color:#94a3b8;'>Active Bonus Alpha: <b style='color:#facc15;'>{b_alpha or 'ANAS IQ Core Only'}</b></p><a href='/top10/sync' style='background:#0284c7;color:#fff;padding:8px 12px;border-radius:8px;text-decoration:none;display:inline-block;margin-bottom:12px;font-size:12px;font-weight:bold;'>🤖 Sync JARVIS Auto-Alpha</a><div style='overflow-x:auto;'><table border=1 cellpadding=6 style='border-collapse:collapse;width:100%;font-size:11px;border-color:#263147;'><tr><th>Rank</th><th>Strategy</th><th>Index</th><th>WinRate</th><th>PF</th><th>60D Return</th><th>MaxDD</th></tr>{tr}</table></div><br><a href='/' style='color:#38bdf8;'>← Back</a></body>"
+    except Exception as e:
+        return f"<body style='background:#0b0f19;color:#ef4444;padding:20px;'>Top10 Error: {e}<br><a href='/' style='color:#38bdf8;'>← Back</a></body>"
+
+@app.route("/top10/sync")
+def top10_sync():
+    msg = jarvis_agent.run_weekly_alpha_rotation(broadcast_alert)
+    return f"<body style='background:#0b0f19;color:#22c55e;font-family:sans-serif;padding:20px;'><h2>🤖 JARVIS Alpha Sync</h2><p>{msg}</p><a href='/top10' style='color:#38bdf8;'>← View Top 10 Leaderboard</a></body>"
 
 @app.route("/backtest")
 def backtest_page():
