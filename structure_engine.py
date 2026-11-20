@@ -60,8 +60,8 @@ def calc_adx(candles, period=14):
         adx = ((adx * (period - 1)) + d) / period
     return round(adx, 2)
 
-def resample_15m(candles_5m):
-    return [{"open": candles_5m[i]["open"], "high": max(x["high"] for x in candles_5m[i:i+3]), "low": min(x["low"] for x in candles_5m[i:i+3]), "close": candles_5m[i+2]["close"]} for i in range(0, len(candles_5m) - 2, 3)]
+def resample_tf(candles_5m, mult: int):
+    return [{"open": candles_5m[i]["open"], "high": max(x["high"] for x in candles_5m[i:i+mult]), "low": min(x["low"] for x in candles_5m[i:i+mult]), "close": candles_5m[i+mult-1]["close"]} for i in range(0, len(candles_5m) - (mult - 1), mult)]
 
 def extract_today_orb(candles):
     open_idx = None
@@ -75,16 +75,11 @@ def extract_today_orb(candles):
     return None, None
 
 def check_structure_invalidation(candles, side: str):
-    """EMA-21 Structure Invalidation: closed candle opposite close ho toh early cut"""
     if len(candles) < 25:
         return False
     ema21 = calc_ema([c["close"] for c in candles[-45:]], 21)
     last_close = candles[-1]["close"]
-    if side == "BUY_CE" and last_close < ema21:
-        return True
-    if side == "BUY_PE" and last_close > ema21:
-        return True
-    return False
+    return (side == "BUY_CE" and last_close < ema21) or (side == "BUY_PE" and last_close > ema21)
 
 def analyze_market_structure(candles, pdh: float, pdl: float, is_expiry: bool = False, check_hours: bool = True, base_min_adx: float = 20.0, now_dt=None, min_score: int = 75):
     if len(candles) < 35:
@@ -107,8 +102,11 @@ def analyze_market_structure(candles, pdh: float, pdl: float, is_expiry: bool = 
     avg_atr = calc_atr(candles[-55:], min(45, len(candles) - 2)) if len(candles) > 25 else atr
     vol_regime = "HIGH_VOL" if (avg_atr > 0 and atr >= avg_atr * 1.7) else "NORMAL"
 
-    c15 = resample_15m(candles)
+    c15 = resample_tf(candles, 3)
     htf_trend = "BULLISH" if (len(c15) >= 22 and calc_ema([x["close"] for x in c15[-15:]], 9) > calc_ema([x["close"] for x in c15[-25:]], 21)) or (len(c15) < 22 and ema9 > ema21) else "BEARISH"
+
+    c30 = resample_tf(candles, 6)
+    macro_trend = "BULLISH" if (len(c30) >= 16 and calc_ema([x["close"] for x in c30[-10:]], 7) > calc_ema([x["close"] for x in c30[-18:]], 16)) or (len(c30) < 16 and htf_trend == "BULLISH") else "BEARISH"
 
     if adx < min_adx:
         return {"signal": "CHOPPY", "reason": f"Sideways/Lunch Chop (ADX:{adx}<{min_adx})", "score": 0, "atr": atr, "vol_regime": vol_regime}
@@ -134,15 +132,15 @@ def analyze_market_structure(candles, pdh: float, pdl: float, is_expiry: bool = 
         elif last["high"] > pdh and last["close"] < pdh and last["close"] < last["open"] and body > rng * 0.4 and last["close"] < ema9:
             cand_sig, cand_name, score = "BUY_PE", "PDH Trap Rejection", 25 + 20 + trap_adx_pts + body_pts + time_pts
 
-    if not cand_sig and orb_high and htf_trend == "BULLISH" and ema9 > ema21 and 45 <= rsi <= 63:
+    if not cand_sig and orb_high and macro_trend == "BULLISH" and htf_trend == "BULLISH" and ema9 > ema21 and 45 <= rsi <= 63:
         if prev["close"] <= orb_high < last["close"] and body > rng * 0.45:
             cand_sig, cand_name, score = "BUY_CE", "15m ORB Breakout", 25 + 20 + trend_adx_pts + body_pts + time_pts
 
     if not cand_sig:
-        if htf_trend == "BULLISH" and ema9 > ema21 and 45 <= rsi <= 63 and last["close"] > ema9 and last["low"] <= ema9 * 1.0015 and last["close"] > prev_swing_high:
+        if macro_trend == "BULLISH" and htf_trend == "BULLISH" and ema9 > ema21 and 45 <= rsi <= 63 and last["close"] > ema9 and last["low"] <= ema9 * 1.0015 and last["close"] > prev_swing_high:
             if not orb_high or last["close"] > orb_high:
                 cand_sig, cand_name, score = "BUY_CE", "15m+5m Bull Pullback BOS", 25 + 20 + trend_adx_pts + body_pts + time_pts
-        elif htf_trend == "BEARISH" and ema9 < ema21 and 37 <= rsi <= 55 and last["close"] < ema9 and last["high"] >= ema9 * 0.9985 and last["close"] < prev_swing_low:
+        elif macro_trend == "BEARISH" and htf_trend == "BEARISH" and ema9 < ema21 and 37 <= rsi <= 55 and last["close"] < ema9 and last["high"] >= ema9 * 0.9985 and last["close"] < prev_swing_low:
             if not orb_low or last["close"] < orb_low:
                 cand_sig, cand_name, score = "BUY_PE", "15m+5m Bear Pullback BOS", 25 + 20 + trend_adx_pts + body_pts + time_pts
 
@@ -152,4 +150,4 @@ def analyze_market_structure(candles, pdh: float, pdl: float, is_expiry: bool = 
         return {"signal": "WAIT", "reason": f"IQ Guard ({cand_name}: {score}<{min_score})", "score": score, "atr": atr, "vol_regime": vol_regime}
 
     orb_txt = f"ORB:{orb_low}-{orb_high}" if orb_high else "ORB:Wait"
-    return {"signal": "WAIT", "reason": f"HTF:{htf_trend} ADX:{adx} RSI:{rsi} {orb_txt}", "score": 0, "atr": atr, "vol_regime": vol_regime}
+    return {"signal": "WAIT", "reason": f"30m:{macro_trend} 15m:{htf_trend} ADX:{adx} {orb_txt}", "score": 0, "atr": atr, "vol_regime": vol_regime}

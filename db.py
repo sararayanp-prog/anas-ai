@@ -476,3 +476,15 @@ def publish_live_status(owner_id: str, spot_txt: str, brain: str, ticks: int, is
         conn.close()
     except Exception:
         pass
+
+
+def get_jarvis_banner():
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("SELECT COALESCE(market_bias, 'MOMENTUM | NEUTRAL | Monitoring') FROM system_config WHERE id = 1")
+        v = cur.fetchone()[0]
+        conn.close()
+        return v
+    except Exception:
+        return "MOMENTUM | NEUTRAL | Monitoring"

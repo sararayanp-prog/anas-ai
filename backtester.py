@@ -48,7 +48,7 @@ def run_60d_backtest(symbol: str):
     capital, peak_cap, max_dd = 50000.0, 50000.0, 0.0
     trades, open_t, day_stats = [], None, {}
 
-    for i in range(80, len(bars)):
+    for i in range(140, len(bars)):
         b = bars[i]
         d = b["date"]
         if d not in prev_day_map:
@@ -56,7 +56,7 @@ def run_60d_backtest(symbol: str):
         pdh, pdl = prev_day_map[d]
         ds = day_stats.setdefault(d, {"count": 0, "losses": 0, "pnl": 0.0, "peak": 0.0, "last_loss_ts": None})
         is_exp = is_expiry_for_index(symbol, b["dt"])
-        win = bars[i - 80:i + 1]
+        win = bars[i - 140:i + 1]
 
         if open_t:
             mins = (b["ts"] - open_t["ts"]) / 60.0
@@ -65,10 +65,13 @@ def run_60d_backtest(symbol: str):
             curr = max(open_t["entry"] + (b["close"] - open_t["spot"]) * 0.5 * mult - decay, 5.0)
             r_pts = open_t["risk"]
 
+            # 3-Step Half-Risk & Profit Lock Shield
             if curr >= open_t["entry"] + (r_pts * 1.35):
                 open_t["trail"] = max(open_t["trail"], round(open_t["entry"] + (r_pts * 0.65), 2))
             elif curr >= open_t["entry"] + (r_pts * 0.85):
                 open_t["trail"] = max(open_t["trail"], round(open_t["entry"] + 3.0, 2))
+            elif curr >= open_t["entry"] + (r_pts * 0.50):
+                open_t["trail"] = max(open_t["trail"], round(open_t["entry"] - (r_pts * 0.50), 2))
 
             exit_p = None
             if mins >= 10 and curr < open_t["entry"] and check_structure_invalidation(win, open_t["side"]):
@@ -101,17 +104,19 @@ def run_60d_backtest(symbol: str):
         if ds["last_loss_ts"] and (b["ts"] - ds["last_loss_ts"]) < 900:
             continue
 
-        in_sniper = capital < (peak_cap * 0.97)
+        in_sniper = capital < (peak_cap * 0.975)
         min_sc = 85 if in_sniper else 75
         res = analyze_market_structure(win, pdh=pdh, pdl=pdl, is_expiry=is_exp, check_hours=True, now_dt=b["dt"], min_score=min_sc)
         if res["signal"] in ("BUY_CE", "BUY_PE"):
             opt_e = {"NIFTY": 140.0, "BANKNIFTY": 320.0, "SENSEX": 350.0}[symbol]
+            floor = {"SENSEX": 38.0, "BANKNIFTY": 28.0, "NIFTY": 12.0}[symbol]
             risk_pct = 0.01 if (in_sniper or res.get("vol_regime") == "HIGH_VOL") else 0.02
             max_risk = capital * risk_pct
             if ds["pnl"] >= 600:
                 max_risk = min(max_risk, max(ds["pnl"] * 0.55, 400.0))
             atr_pts = round(res["atr"] * 1.5 * 0.5, 2)
-            sl_pts = min(max(atr_pts, 10.0), max(round(max_risk / lot, 2), 8.0))
+            max_sl = max(round(max_risk / lot, 2), floor if not in_sniper else floor * 0.7)
+            sl_pts = min(max(atr_pts, floor), max_sl)
             open_t = {
                 "ts": b["ts"], "side": res["signal"], "spot": b["close"],
                 "entry": opt_e, "risk": sl_pts, "trail": opt_e - sl_pts, "target": opt_e + (sl_pts * 2.0),

@@ -19,6 +19,7 @@ import free_market
 import push_service
 import health_healer
 import jarvis_doctor
+import jarvis_agent
 import backtester
 from structure_engine import analyze_market_structure, ist_now, is_expiry_for_index, check_structure_invalidation
 from telegram_alert import send_telegram
@@ -55,7 +56,8 @@ def calc_capped_sl_target(opt_entry: float, active_capital: float, lot: int, tod
     atr_opt_pts = round(spot_atr * 1.5 * 0.5, 2)
     max_sl_pts = max(round(max_risk_rs / max(lot, 1), 2), floor_pts if not in_sniper else floor_pts * 0.7)
     sl_pts = min(max(atr_opt_pts, floor_pts), max_sl_pts)
-    return round(opt_entry - sl_pts, 2), round(opt_entry + (sl_pts * 2.0), 2)
+    t_mult = 1.40 if jarvis_agent.jarvis_state.get("style") == "QUICK_SCALP" else 2.0
+    return round(opt_entry - sl_pts, 2), round(opt_entry + (sl_pts * t_mult), 2)
 
 def step_trail_check(tid, tsym, entry, sl, trail_sl, curr_opt):
     risk = max(abs(entry - sl), 4.0)
@@ -67,6 +69,10 @@ def step_trail_check(tid, tsym, entry, sl, trail_sl, curr_opt):
     elif curr_opt >= cost_lvl and trail_sl < cost_sl:
         db.update_trailing_sl(tid, cost_sl)
         broadcast_alert(f"🛡️ Safe Trail: {tsym}", f"SL at Cost+₹3 (₹{cost_sl})", f"🛡️ <b>BROKERAGE-FREE TRAIL</b>\n{tsym} | New SL: ₹{cost_sl}")
+    elif curr_opt >= round(entry + (risk * 0.50), 2) and trail_sl < round(entry - (risk * 0.50), 2):
+        half_sl = round(entry - (risk * 0.50), 2)
+        db.update_trailing_sl(tid, half_sl)
+        broadcast_alert(f"🛡️ Half-Risk Shield: {tsym}", f"SL cut in HALF to ₹{half_sl}", f"🛡️ <b>HALF-RISK SHIELD (+0.5R)</b>\n{tsym} | New SL: ₹{half_sl}")
 
 def make_png_icon(size: int):
     rows = []
@@ -122,6 +128,8 @@ def sync_real_spots_once():
                 pass
 
 def check_risk_limits(today_pnl: float = 0.0):
+    if time.time() < jarvis_agent.jarvis_state.get("pause_until", 0.0):
+        return False, f"🤖 JARVIS News Shield: 15m Pause ({jarvis_agent.jarvis_state.get('note', '')[:40]})"
     rstats = db.get_today_risk_stats()
     if rstats["trades_today"] >= 5:
         return False, "Max 5 Trades/Day Limit Reached"
@@ -481,6 +489,7 @@ def ensure_engine_alive(force_restart: bool = False):
             db.init_db()
             db.repair_schema()
             jarvis_doctor.start_doctor_once(runtime_status, ensure_engine_alive, broadcast_alert)
+            jarvis_agent.start_jarvis_once(broadcast_alert)
             push_service.ensure_vapid_keys()
             _engine_thread = threading.Thread(target=anas_trading_loop, daemon=True)
             _engine_thread.start()
@@ -539,7 +548,7 @@ def api_state():
         "capital": cap, "vault": vault, "today_pnl": today_pnl,
         "wins": wins, "total": total, "win_rate": round((wins / total) * 100.0, 1) if total > 0 else 0.0,
         "armor_pct": round(min((cap / max(peak_cap, 1.0)) * 100.0, 100.0), 1),
-        "sniper": cap < (peak_cap * 0.975),
+        "sniper": cap < (peak_cap * 0.975), "jarvis": db.get_jarvis_banner(),
         "trades": [{"id": t[0], "symbol": t[1], "side": t[2], "setup": t[3], "entry": float(t[4]), "trail_sl": float(t[5]), "target": float(t[6]), "exit": float(t[7]) if t[7] is not None else None, "pnl": float(t[8] or 0), "status": t[9]} for t in trades]
     }
     _state_cache["ts"] = now_t
@@ -598,7 +607,7 @@ def backtest_page():
             cards += f"<div style='background:#161e2e;padding:14px;border-radius:12px;margin-bottom:14px;border:1px solid #263147;'><h3 style='margin:0 0 6px 0;'>{sym} ({r['days']} Days | {r['candles']} Candles)</h3><p style='font-size:13px;'>Trades: <b>{r['total']}</b> | Wins: <b>{r['wins']} ({r['win_rate']}%)</b> | Profit Factor: <b>{r['pf']}</b> | Max DD: <b>₹{r['max_dd']:,.2f}</b><br>Net P&L: <b style='color:{c};font-size:16px;'>₹{r['net_pnl']:,.2f}</b></p><table border=1 cellpadding=6 style='border-collapse:collapse;width:100%;font-size:11px;border-color:#263147;'><tr><th>Setup</th><th>Trades</th><th>Wins</th><th>Net P&L</th></tr>{st_rows}</table></div>"
         except Exception as e:
             cards += f"<div style='color:#ef4444;'>{sym} Error: {e}</div>"
-    return f"<body style='background:#0b0f19;color:#e2e8f0;font-family:system-ui,sans-serif;padding:16px;'><h2>🔬 60-Day Real 5-Min Backtest (v10.0 IQ)</h2><p style='font-size:12px;color:#94a3b8;'>Rules: Sniper Mode, EMA21 Early Exit, R-Multiple Lock, Score>=75, ATR SL, Theta & ₹55 brokerage included.</p>{cards}<a href='/' style='color:#38bdf8;'>← Back to Dashboard</a></body>"
+    return f"<body style='background:#0b0f19;color:#e2e8f0;font-family:system-ui,sans-serif;padding:16px;'><h2>🔬 60-Day Real 5-Min Backtest (v11.0 JARVIS)</h2><p style='font-size:12px;color:#94a3b8;'>Rules: Sniper Mode, EMA21 Early Exit, R-Multiple Lock, Score>=75, ATR SL, Theta & ₹55 brokerage included.</p>{cards}<a href='/' style='color:#38bdf8;'>← Back to Dashboard</a></body>"
 
 @app.route("/health")
 def health_page():
@@ -666,6 +675,11 @@ def test_dhan():
         return f"<body style='background:#0b0f19;color:#22c55e;font-family:sans-serif;padding:20px;'><h2>✅ Dhan Data API Connected!</h2><p>NIFTY Spot: <b>{oc.get('last_price')}</b><br>PDH: <b>{pdh}</b> | PDL: <b>{pdl}</b><br>Nearest Expiry: <b>{exp}</b></p><a href='/' style='color:#38bdf8;'>← Back</a></body>"
     except Exception as e:
         return f"<body style='background:#0b0f19;color:#ef4444;font-family:sans-serif;padding:20px;'><h2>❌ Dhan API Error</h2><pre>{e}</pre><a href='/' style='color:#38bdf8;'>← Back</a></body>"
+
+@app.route("/jarvis-scan")
+def jarvis_scan():
+    jarvis_agent.run_jarvis_scan(broadcast_alert)
+    return redirect("/")
 
 @app.route("/ai-brief")
 def ai_brief():

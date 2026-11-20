@@ -1,7 +1,7 @@
 DASHBOARD_HTML = """<!DOCTYPE html>
 <html>
 <head>
-  <title>ANAS AI - Pro v10.4 PRO</title>
+  <title>ANAS AI - Pro v11.0 JARVIS</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
   <meta name="theme-color" content="#0b0f19">
   <link rel="manifest" href="/manifest.json"><link rel="icon" href="/icon-192.png">
@@ -47,6 +47,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     <a href="/sym/NIFTY" class="drawer-btn" style="background:#334155;">NIFTY ONLY</a>
 
     <div class="sec-title">AI & Quant Tools</div>
+    <a href="/jarvis-scan" class="drawer-btn" style="background:#0ea5e9;">🤖 JARVIS LIVE SCAN</a>
     <a href="/ai-brief" class="drawer-btn" style="background:#6366f1;">🧠 GEMINI BRIEF</a>
     <a href="/ai-audit" class="drawer-btn" style="background:#7c3aed;">📊 AI TRADE AUDIT</a>
     <a href="/backtest" class="drawer-btn" style="background:#be185d;">🔬 BACKTEST 60D</a>
@@ -77,7 +78,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   <div class="topbar">
     <div style="display:flex;align-items:center;gap:10px;">
       <button class="menu-btn" onclick="toggleMenu()">☰</button>
-      <div style="font-size:17px;font-weight:bold;">⚡ ANAS AI <span style="font-size:11px;color:#38bdf8;">v10.4 PRO</span></div>
+      <div style="font-size:17px;font-weight:bold;">⚡ ANAS AI <span style="font-size:11px;color:#38bdf8;">v11.0 JARVIS</span></div>
     </div>
     <div id="kill-slot">
       <a href="/kill/on" class="btn" style="background:#eab308;color:#000;margin:0;padding:7px 12px;">🟡 KILL SWITCH</a>
@@ -87,7 +88,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   <p id="status-line" style="font-size:12px;margin:4px 0;">Loading...</p>
   <p id="brain-line" style="font-size:11px;color:#94a3b8;margin:2px 0 6px 0;">Connecting...</p>
   <div id="armor-bar" style="background:#161e2e;border:1px solid #263147;padding:8px 10px;border-radius:10px;font-size:11px;margin:6px 0;color:#38bdf8;">🛡️ Capital Armor loading...</div>
-  <p id="push-msg" style="font-size:11px;color:#38bdf8;margin:2px 0;"></p>
+  <div id="jarvis-bar" style="background:#161e2e;border:1px solid #263147;padding:7px 10px;border-radius:10px;font-size:11px;margin:4px 0 8px 0;color:#a78bfa;">🤖 JARVIS initializing...</div><p id="push-msg" style="font-size:11px;color:#38bdf8;margin:2px 0;"></p>
 
   <div class="grid">
     <div class="card">Active Capital<div id="cap" class="val">--</div></div>
@@ -148,6 +149,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
         document.getElementById('armor-bar').innerHTML = d.sniper
           ? `🛡️ <b>Capital Armor: ${d.armor_pct}%</b> | <b style="color:#facc15;">RECOVERY SNIPER (85+ | 1% Risk)</b><br><span style="color:#94a3b8;">Aap safe hain — manual trade mat karna, AI A++ setup wait kar raha hai.</span>`
           : `🛡️ <b>Capital Armor: ${d.armor_pct}%</b> | <b style="color:#22c55e;">NORMAL IQ (Score 75+ | 2% Risk)</b>`;
+        document.getElementById('jarvis-bar').innerHTML = `🤖 <b>JARVIS:</b> ${d.jarvis || 'MOMENTUM | Monitoring'}`;
         document.getElementById('cap').textContent = '₹' + d.capital.toLocaleString('en-IN', {minimumFractionDigits:2});
         document.getElementById('vault').textContent = '₹' + d.vault.toLocaleString('en-IN', {minimumFractionDigits:2});
         const pnlEl = document.getElementById('pnl');
