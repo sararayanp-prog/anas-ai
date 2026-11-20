@@ -29,7 +29,6 @@ app = Flask(__name__)
 from saas_portal import saas_bp
 app.register_blueprint(saas_bp)
 app.secret_key = os.getenv("FLASK_SECRET", os.getenv("ADMIN_PIN", "0401") + "_sarahics_anas_key")
-app.register_blueprint(saas_bp)
 
 # --- (Yahan wahi trading logic aur routes rahenge jo v12.0 me the) ---
 # Main engine aur routes ko include kar lijiye, main yahan 'tg-webhook' fix de raha hoon

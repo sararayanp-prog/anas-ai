@@ -7,7 +7,7 @@ from flask import Blueprint, request, jsonify, render_template_string
 import requests
 import db
 
-saas_bp = Blueprint("saas_portal", __name__)
+saas_bp = Blueprint("saas_portal_v2", __name__)
 
 UPI_ID = os.getenv("MERCHANT_UPI_ID", "Q57363994@ybl")
 UPI_NAME = os.getenv("MERCHANT_UPI_NAME", "Sarah ICS SNPL")
