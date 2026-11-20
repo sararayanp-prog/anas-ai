@@ -1,4 +1,3 @@
-from email_service import send_brevo_email
 import os, secrets, hashlib, smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -60,15 +59,13 @@ def send_tg_admin(msg: str):
         pass
 
 def send_reset_email(to_email: str, reset_link: str):
-    zoho_email = os.getenv("ZOHO_EMAIL", "sales@sarahics.in")
-    zoho_pass = os.getenv("ZOHO_APP_PASSWORD", "")
-    smtp_host = os.getenv("ZOHO_SMTP_HOST", "smtp.zoho.in")
-    if not zoho_pass:
-        return False, "ZOHO_APP_PASSWORD Render Env me set nahi hai."
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = "ANAS AI QUANT - Reset Your Password"
-    msg["From"] = f"ANAS AI Support <{zoho_email}>"
-    msg["To"] = to_email
+    api_key = os.getenv("BREVO_API_KEY", "").strip()
+    sender_email = os.getenv("BREVO_SENDER_EMAIL", "backup@sarahics.in").strip()
+    sender_name = os.getenv("BREVO_SENDER_NAME", "ANAS AI Support").strip()
+
+    if not api_key:
+        return False, "BREVO_API_KEY Render Env me set nahi hai."
+
     html = f"""
     <div style="font-family:Arial,sans-serif;background:#0b1120;color:#e5e7eb;padding:24px;border-radius:12px;">
       <h2 style="color:#38bdf8;">ANAS AI QUANT - Password Reset</h2>
@@ -82,11 +79,30 @@ def send_reset_email(to_email: str, reset_link: str):
       <p style="font-size:12px;color:#9ca3af;">Agar aapne yeh request nahi ki hai, toh is email ko ignore karein.</p>
     </div>
     """
-    msg.attach(MIMEText(html, "html"))
+
     try:
-        ok_mail, mail_msg = send_brevo_email(email, "ANAS AI - Password Reset", f"<p>Click here to reset your password: <a href=\"{reset_link}\">{reset_link}</a></p>")
-        if not ok_mail:
-            raise Exception(mail_msg)
+        r = requests.post(
+            "https://api.brevo.com/v3/smtp/email",
+            headers={
+                "accept": "application/json",
+                "api-key": api_key,
+                "content-type": "application/json",
+            },
+            json={
+                "sender": {"name": sender_name, "email": sender_email},
+                "to": [{"email": to_email}],
+                "subject": "ANAS AI QUANT - Reset Your Password",
+                "htmlContent": html,
+            },
+            timeout=10,
+        )
+        if r.status_code in (200, 201, 202):
+            return True, "Reset link aapke email par bhej diya gaya hai! Inbox/Spam check karein."
+        return False, f"Email bhejne me error: Brevo {r.status_code} - {r.text}"
+    except Exception as e:
+        return False, f"Email bhejne me error: {str(e)}"
+
+PORTAL_HTML = """<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
