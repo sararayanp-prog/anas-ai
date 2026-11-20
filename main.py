@@ -13,6 +13,7 @@ from datetime import datetime, time as dt_time
 from dotenv import load_dotenv
 from flask import Flask, redirect, request, jsonify, Response
 import ui
+import saas_pages
 import db
 import dhan_bridge
 import free_market
@@ -564,7 +565,41 @@ def api_state():
 
 @app.route("/")
 def dashboard():
+    if "sarahics.in" in (request.host or "").lower():
+        return saas_pages.home_page()
     return ui.DASHBOARD_HTML
+
+@app.route("/terminal")
+def terminal_view():
+    return ui.DASHBOARD_HTML
+
+@app.route("/saas")
+def saas_preview():
+    return saas_pages.home_page()
+
+@app.route("/about")
+def saas_about():
+    return saas_pages.about_page()
+
+@app.route("/pricing")
+def saas_pricing():
+    return saas_pages.pricing_page()
+
+@app.route("/terms")
+def saas_terms():
+    return saas_pages.terms_page()
+
+@app.route("/privacy")
+def saas_privacy():
+    return saas_pages.privacy_page()
+
+@app.route("/refund")
+def saas_refund():
+    return saas_pages.refund_page()
+
+@app.route("/contact")
+def saas_contact():
+    return saas_pages.contact_page()
 
 @app.route("/kill/on")
 def kill_on():
