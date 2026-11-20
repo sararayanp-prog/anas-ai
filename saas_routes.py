@@ -84,3 +84,45 @@ def payment(plan_id):
         <button class='btn' style='background:#059669;'>Submit Payment Details</button>
       </form>
     </div>""")
+
+@saas_bp.route("/admin/handle-payment", methods=["POST"])
+def handle_payment():
+    # Ye route Telegram Bot se callback handle karega
+    data = request.json
+    uid = data.get("user_id")
+    action = data.get("action")
+    payment_id = data.get("payment_id")
+    
+    conn = db.get_conn()
+    cur = conn.cursor()
+    if action == "APPROVE":
+        # Plan expiry 30 days extend (Example)
+        cur.execute("UPDATE saas_payments SET status = 'COMPLETED' WHERE id = %s", (payment_id,))
+        cur.execute("UPDATE saas_users SET plan_expires_at = NOW() + INTERVAL '30 days', plan_name = 'MONTHLY' WHERE id = %s", (uid,))
+        conn.commit()
+    else:
+        cur.execute("UPDATE saas_payments SET status = 'REJECTED' WHERE id = %s", (payment_id,))
+        conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
+
+@saas_bp.route("/admin/handle-payment", methods=["POST"])
+def handle_payment():
+    # Ye route Telegram Bot se callback handle karega
+    data = request.json
+    uid = data.get("user_id")
+    action = data.get("action")
+    payment_id = data.get("payment_id")
+    
+    conn = db.get_conn()
+    cur = conn.cursor()
+    if action == "APPROVE":
+        # Plan expiry 30 days extend (Example)
+        cur.execute("UPDATE saas_payments SET status = 'COMPLETED' WHERE id = %s", (payment_id,))
+        cur.execute("UPDATE saas_users SET plan_expires_at = NOW() + INTERVAL '30 days', plan_name = 'MONTHLY' WHERE id = %s", (uid,))
+        conn.commit()
+    else:
+        cur.execute("UPDATE saas_payments SET status = 'REJECTED' WHERE id = %s", (payment_id,))
+        conn.commit()
+    conn.close()
+    return jsonify({"ok": True})

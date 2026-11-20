@@ -755,5 +755,47 @@ def ai_brief():
 def ai_audit():
     return f"<body style='background:#0b0f19;color:#fff;font-family:sans-serif;padding:20px;'><h2>📊 Gemini Trade Coach Audit</h2><pre style='white-space:pre-wrap;font-size:15px;'>{audit_todays_trades(db.get_recent_trades(12))}</pre><br><a href='/' style='color:#38bdf8;'>← Back</a></body>"
 
+
+@app.route("/tg-webhook", methods=["POST"])
+def tg_webhook():
+    data = request.json
+    if "callback_query" in data:
+        cb = data["callback_query"]
+        action, pid, uid = cb["data"].split(":")
+        # Simple DB update
+        conn = db.get_conn()
+        cur = conn.cursor()
+        if action == "APPROVE":
+            cur.execute("UPDATE saas_payments SET status = 'COMPLETED' WHERE id = %s", (pid,))
+            cur.execute("UPDATE saas_users SET plan_expires_at = NOW() + INTERVAL '30 days', plan_name = 'MONTHLY' WHERE id = %s", (uid,))
+        else:
+            cur.execute("UPDATE saas_payments SET status = 'REJECTED' WHERE id = %s", (pid,))
+        conn.commit()
+        conn.close()
+        send_telegram(f"✅ Payment {action}ed successfully!")
+    return jsonify({"ok": True})
+
+
+
+@app.route("/tg-webhook", methods=["POST"])
+def tg_webhook():
+    data = request.json
+    if "callback_query" in data:
+        cb = data["callback_query"]
+        action, pid, uid = cb["data"].split(":")
+        # Simple DB update
+        conn = db.get_conn()
+        cur = conn.cursor()
+        if action == "APPROVE":
+            cur.execute("UPDATE saas_payments SET status = 'COMPLETED' WHERE id = %s", (pid,))
+            cur.execute("UPDATE saas_users SET plan_expires_at = NOW() + INTERVAL '30 days', plan_name = 'MONTHLY' WHERE id = %s", (uid,))
+        else:
+            cur.execute("UPDATE saas_payments SET status = 'REJECTED' WHERE id = %s", (pid,))
+        conn.commit()
+        conn.close()
+        send_telegram(f"✅ Payment {action}ed successfully!")
+    return jsonify({"ok": True})
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", 8000)), use_reloader=False)
