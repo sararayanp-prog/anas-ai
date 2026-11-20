@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ANAS AI — Quant Algo Pro Platform</title>
+    <style>
+        body { background:#0a0e17; color:#e2e8f0; font-family:-apple-system,BlinkMacSystemFont,sans-serif; margin:0; padding:16px; }
+        .box { max-width:500px; margin:16px auto; background:#111827; border:1px solid #1f2937; border-radius:14px; padding:20px; box-shadow:0 10px 25px rgba(0,0,0,0.5); }
+        h1, h2, h3 { color:#38bdf8; text-align:center; margin:0 0 8px 0; }
+        .sub { text-align:center; color:#94a3b8; font-size:13px; margin-bottom:18px; }
+        input, select, button { width:100%; padding:12px; margin:8px 0; border-radius:8px; border:1px solid #374151; background:#1e293b; color:#fff; font-size:14px; box-sizing:border-box; }
+        button { background:#2563eb; font-weight:bold; cursor:pointer; border:none; margin-top:10px; transition:0.2s; }
+        button:hover { filter:brightness(1.15); }
+        .card { background:#0f172a; border:1px solid #334155; padding:14px; border-radius:10px; margin:10px 0; position:relative; }
+        .badge { position:absolute; top:10px; right:12px; font-size:10px; padding:3px 8px; border-radius:12px; font-weight:bold; }
+        .b-dhan { background:#059669; color:#fff; }
+        .b-angel { background:#d97706; color:#fff; }
+        .b-upstox { background:#7c3aed; color:#fff; }
+        .b-fyers { background:#2563eb; color:#fff; }
+        .price { font-size:20px; color:#22c55e; font-weight:bold; }
+        .upi-box { background:#1e1b4b; border:1px dashed #6366f1; border-radius:8px; padding:14px; text-align:center; margin:15px 0; }
+        .warn { background:#450a0a; border:1px solid #dc2626; color:#fca5a5; font-size:12px; padding:10px; border-radius:8px; margin:12px 0; line-height:1.4; }
+        .qr-img { width:180px; height:180px; margin:10px auto; display:block; border-radius:8px; background:#fff; padding:6px; }
+        .broker-title { font-size:16px; font-weight:bold; color:#fff; margin-bottom:4px; }
+        .broker-desc { font-size:12px; color:#94a3b8; margin-bottom:8px; }
+        .tag-free { color:#38bdf8; font-weight:bold; font-size:12px; }
+    </style>
+</head>
+<body>
+    <!-- 1. SIGNUP & DISCIPLINE -->
+    <div class="box" id="authBox">
+        <h1>⚡ ANAS AI QUANT</h1>
+        <div class="sub">Institutional Grade NIFTY • BANKNIFTY • SENSEX Algo</div>
+        
+        <div class="warn">
+            ⚠️ <b>STRICT TRADER DISCIPLINE RULE:</b><br>
+            Market hours (9:15 AM - 3:30 PM) me manual order execute karne ya system ke trade ko interfere karne par Support-Lock active ho jayega aur baki trades us din ke liye freeze ho jayenge.
+        </div>
+        
+        <input type="text" id="email" placeholder="Email Address (e.g. user@gmail.com)">
+        <input type="tel" id="mobile" placeholder="Mobile Number (10 Digits)">
+        <input type="password" id="pw" placeholder="Create Secret Password">
+        <input type="text" id="refBy" placeholder="Referral Code (Optional - 10% Benefit)">
+        <button onclick="handleSignup()">Sign Up & Access Platform</button>
+    </div>
+
+    <!-- 2. HUB SELECTION -->
+    <div class="box" id="hubBox" style="display:none;">
+        <h2>Select How You Want to Join</h2>
+        <div class="sub">Naya Demat khol kar 30 Din Free Access lein YA Direct Subscription chunein</div>
+
+        <button style="background:#059669; font-size:15px; padding:14px;" onclick="showBrokers()">
+            🎁 Open Free Demat (Get 30 Days Pro Free)
+        </button>
+        <button style="background:#334155; font-size:14px; margin-top:8px;" onclick="showPlans()">
+            ⚡ I Already Have an Account (Pay via UPI)
+        </button>
+    </div>
+
+    <!-- 3. TOP 4 BROKER PARTNERS -->
+    <div class="box" id="brokerBox" style="display:none;">
+        <h2>Top 4 Verified Brokers</h2>
+        <div class="sub">Kisi bhi link se account banakar Client ID submit karein aur 30-Day Free Pass payein!</div>
+
+        <!-- Dhan -->
+        <div class="card" style="border-color:#10b981;">
+            <span class="badge b-dhan">⚡ BEST FOR SCALPING</span>
+            <div class="broker-title">1. Dhan</div>
+            <div class="broker-desc">Free Realtime Webhook & Unlimited API. Best for Zero-lag Options scalping.</div>
+            <span class="tag-free">🎁 30-Days ANAS AI Pass FREE</span>
+            <button style="background:#059669;" onclick="openBrokerLink('https://invite.dhan.co/?join=ANASAI', 'DHAN')">Open Dhan Account (Free)</button>
+        </div>
+
+        <!-- Angel One -->
+        <div class="card" style="border-color:#f59e0b;">
+            <span class="badge b-angel">🏆 MOST TRUSTED</span>
+            <div class="broker-title">2. Angel One</div>
+            <div class="broker-desc">SmartAPI 100% Free with highest market liquidity & trusted Pan-India reliability.</div>
+            <span class="tag-free">🎁 30-Days ANAS AI Pass FREE</span>
+            <button style="background:#d97706;" onclick="openBrokerLink('https://angel-one.onelink.me/ja4k/ANASAI', 'ANGEL')">Open Angel One Account</button>
+        </div>
+
+        <!-- Upstox -->
+        <div class="card" style="border-color:#8b5cf6;">
+            <span class="badge b-upstox">📱 5-MIN KYC</span>
+            <div class="broker-title">3. Upstox</div>
+            <div class="broker-desc">Ultra clean modern app, instant paperless onboarding & fast developer API.</div>
+            <span class="tag-free">🎁 30-Days ANAS AI Pass FREE</span>
+            <button style="background:#7c3aed;" onclick="openBrokerLink('https://upstox.com/open-account/?f=ANASAI', 'UPSTOX')">Open Upstox Account</button>
+        </div>
+
+        <!-- Fyers -->
+        <div class="card" style="border-color:#3b82f6;">
+            <span class="badge b-fyers">📊 TRADINGVIEW NATIVE</span>
+            <div class="broker-title">4. Fyers</div>
+            <div class="broker-desc">Direct TradingView chart execution, multiple multi-chart setup & free data API.</div>
+            <span class="tag-free">🎁 30-Days ANAS AI Pass FREE</span>
+            <button style="background:#2563eb;" onclick="openBrokerLink('https://open-account.fyers.in/?utm-source=ANASAI', 'FYERS')">Open Fyers Account</button>
+        </div>
+
+        <button style="background:#374151; margin-top:14px;" onclick="backToHub()">← Back</button>
+    </div>
+
+    <!-- 4. DIRECT PAID PLANS -->
+    <div class="box" id="planBox" style="display:none;">
+        <h2>Select Direct Pro Plan</h2>
+        <div class="card">
+            <b>Weekly Pass</b> — <span class="price">₹499</span> (7 Days)
+            <button onclick="choosePlan('WEEKLY', 499)">Select Weekly</button>
+        </div>
+        <div class="card" style="border-color:#38bdf8;">
+            <b>Monthly Pro (Popular)</b> — <span class="price">₹1,499</span> (30 Days)
+            <button onclick="choosePlan('MONTHLY', 1499)" style="background:#0284c7;">Select Monthly</button>
+        </div>
+        <div class="card">
+            <b>Quarterly Alpha</b> — <span class="price">₹3,999</span> (90 Days)
+            <button onclick="choosePlan('QUARTERLY', 3999)">Select Quarterly</button>
+        </div>
+        <div class="card">
+            <b>Yearly Institutional</b> — <span class="price">₹11,999</span> (365 Days)
+            <button onclick="choosePlan('YEARLY', 11999)">Select Yearly</button>
+        </div>
+        <button style="background:#374151; margin-top:12px;" onclick="backToHub()">← Back</button>
+    </div>
+
+    <!-- 5. SCAN & PAY UPI -->
+    <div class="box" id="payBox" style="display:none;">
+        <h2>Scan & Pay UPI</h2>
+        <div class="upi-box">
+            <div>Pay to UPI ID: <b>9978982577@upi</b></div>
+            <div style="font-size:12px; color:#94a3b8; margin-top:4px;">Sarah ICS SNPL / PhonePe Business</div>
+            <img class="qr-img" id="qrImg" src="" alt="UPI QR">
+            <div style="font-size:16px; color:#38bdf8; font-weight:bold; margin-top:6px;" id="payAmtTxt">₹0</div>
+        </div>
+        
+        <input type="text" id="utrRef" placeholder="Enter 12-Digit UPI Ref / UTR Number">
+        <button style="background:#16a34a;" onclick="submitPaymentUTR()">Submit UTR for Instant Activation</button>
+        <button style="background:#374151;" onclick="backToPlans()">← Back to Plans</button>
+    </div>
+
+    <script>
+        let currentUserId = null;
+        let selectedPlan = "MONTHLY";
+        let selectedAmt = 1499;
+
+        async function handleSignup() {
+            const email = document.getElementById("email").value;
+            const mobile = document.getElementById("mobile").value;
+            const pw = document.getElementById("pw").value;
+            const ref = document.getElementById("refBy").value;
+            if(!email || !mobile || !pw) return alert("Sabhi details bharna zaroori hai!");
+
+            const res = await fetch("/api/saas/signup", {
+                method:"POST",
+                headers:{"Content-Type":"application/json"},
+                body: JSON.stringify({email, mobile, password: pw, ref_by: ref})
+            });
+            const d = await res.json();
+            if(d.ok) {
+                currentUserId = d.user_id;
+                document.getElementById("authBox").style.display = "none";
+                document.getElementById("hubBox").style.display = "block";
+            } else {
+                alert("Error: " + d.error);
+            }
+        }
+
+        function showBrokers() {
+            document.getElementById("hubBox").style.display = "none";
+            document.getElementById("brokerBox").style.display = "block";
+        }
+
+        function showPlans() {
+            document.getElementById("hubBox").style.display = "none";
+            document.getElementById("planBox").style.display = "block";
+        }
+
+        function backToHub() {
+            document.getElementById("brokerBox").style.display = "none";
+            document.getElementById("planBox").style.display = "none";
+            document.getElementById("hubBox").style.display = "block";
+        }
+
+        function backToPlans() {
+            document.getElementById("payBox").style.display = "none";
+            document.getElementById("planBox").style.display = "block";
+        }
+
+        function openBrokerLink(url, broker) {
+            window.open(url, "_blank");
+            const clientId = prompt(`Apna naya ${broker} Client ID / UCC enter karein verification ke liye:`);
+            if(clientId) {
+                fetch("/api/saas/pay", {
+                    method:"POST",
+                    headers:{"Content-Type":"application/json"},
+                    body: JSON.stringify({
+                        user_id: currentUserId,
+                        plan: "BROKER_FREE_30D",
+                        amount: 0.0,
+                        utr: broker + "_" + clientId,
+                        upi_id: "BROKER_PARTNER"
+                    })
+                });
+                alert("✅ Client ID Submit ho gaya! Admin verification ke baad 30-Day Free Pass unlock ho jayega.");
+                window.location.href = "/";
+            }
+        }
+
+        function choosePlan(plan, amt) {
+            selectedPlan = plan;
+            selectedAmt = amt;
+            document.getElementById("payAmtTxt").innerText = "Amount to Pay: ₹" + amt;
+            const upiUrl = `upi://pay?pa=9978982577@upi&pn=SarahICS&am=${amt}&cu=INR`;
+            document.getElementById("qrImg").src = "https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=" + encodeURIComponent(upiUrl);
+            document.getElementById("planBox").style.display = "none";
+            document.getElementById("payBox").style.display = "block";
+        }
+
+        async function submitPaymentUTR() {
+            const utr = document.getElementById("utrRef").value;
+            if(!utr || utr.length < 8) return alert("Kripya sahi 12-digit UTR No. enter karein!");
+
+            const res = await fetch("/api/saas/pay", {
+                method:"POST",
+                headers:{"Content-Type":"application/json"},
+                body: JSON.stringify({
+                    user_id: currentUserId,
+                    plan: selectedPlan,
+                    amount: selectedAmt,
+                    utr: utr,
+                    upi_id: "9978982577@upi"
+                })
+            });
+            const d = await res.json();
+            if(d.ok) {
+                alert("✅ Payment UTR Submitted! Admin Telegram se verify hote hi instant active ho jayega.");
+                window.location.href = "/";
+            } else {
+                alert("Error: " + d.error);
+            }
+        }
+    </script>
+</body>
+</html>
