@@ -116,6 +116,49 @@ def api_signin():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+
+# === UNIVERSAL PAYMENT ROUTE (FIXES <!doctype JSON ERROR) ===
+@app.route("/api/submit_utr", methods=["POST"])
+@app.route("/api/saas/pay", methods=["POST"])
+@app.route("/submit_utr", methods=["POST"])
+def universal_pay_handler():
+    try:
+        from flask import request, jsonify
+        import db, os, requests
+        data = request.get_json(silent=True) or {}
+        uid = data.get("user_id")
+        plan = data.get("plan") or "WEEKLY"
+        amt = float(data.get("amount") or 499.0)
+        utr = (data.get("utr") or "").strip()
+        
+        if not utr or len(utr) < 8:
+            return jsonify({"ok": False, "msg": "Kripya valid 12-digit UTR enter karein!"}), 200
+            
+        conn = db.get_conn()
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO saas_payments (user_id, amount, utr_ref, upi_id, status, plan_selected) VALUES (%s, %s, %s, %s, %s, %s) RETURNING id;",
+            (uid, amt, utr, "Q57363994@ybl", "PENDING", plan)
+        )
+        pid = cur.fetchone()[0]
+        conn.commit()
+        conn.close()
+        
+        # Telegram Admin Notification
+        tg_token = os.getenv("TELEGRAM_BOT_TOKEN")
+        tg_chat = os.getenv("TELEGRAM_CHAT_ID")
+        if tg_token and tg_chat:
+            tg_msg = f"💳 <b>NEW PAYMENT SUBMITTED</b>\n\nID: #{pid}\nUser ID: #{uid}\nPlan: {plan}\nAmount: ₹{amt}\nUTR: <code>{utr}</code>\n\nApprove: <code>/approve_{pid}</code>"
+            try:
+                requests.post(f"https://api.telegram.org/bot{tg_token}/sendMessage", json={"chat_id": tg_chat, "text": tg_msg, "parse_mode": "HTML"}, timeout=5)
+            except Exception:
+                pass
+                
+        return jsonify({"ok": True, "msg": "✅ UTR jama ho gaya! Verification ke baad instant plan activate ho jayega."}), 200
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Server Notice: {str(e)}"}), 200
+
+
 if __name__ == "__main__":
     db.init_db()
     saas_db.init_saas_db()
