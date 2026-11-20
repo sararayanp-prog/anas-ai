@@ -94,8 +94,9 @@ def portal():
         session.pop("saas_uid", None)
         return redirect("/login")
 
-    active = bool(u["plan_expires_at"] and u["plan_expires_at"] > datetime.utcnow())
-    status_txt = f"<span style='color:#22c55e;'>ACTIVE ({u['plan_name']} till {u['plan_expires_at'].strftime('%d %b %Y')})</span>" if active else "<span style='color:#f59e0b;'>SUBSCRIPTION REQUIRED (Choose Plan to Activate)</span>"
+    exp = u["plan_expires_at"].replace(tzinfo=None) if u["plan_expires_at"] else None
+    active = bool(exp and exp > datetime.utcnow())
+    status_txt = f"<span style='color:#22c55e;'>ACTIVE ({u['plan_name']} till {exp.strftime('%d %b %Y')})</span>" if active else "<span style='color:#f59e0b;'>SUBSCRIPTION REQUIRED (Choose Plan to Activate)</span>"
     base_url = f"https://{request.host}"
     ref_link = f"{base_url}/signup?ref={u['referral_code']}"
     wa_num = os.getenv("SUPPORT_PHONE", "+919978982577").replace("+", "").replace("-", "").strip()
