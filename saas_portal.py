@@ -1,3 +1,4 @@
+from email_service import send_brevo_email
 import os, secrets, hashlib, smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -83,14 +84,9 @@ def send_reset_email(to_email: str, reset_link: str):
     """
     msg.attach(MIMEText(html, "html"))
     try:
-        with smtplib.SMTP_SSL(smtp_host, 465, timeout=12) as server:
-            server.login(zoho_email, zoho_pass)
-            server.sendmail(zoho_email, [to_email], msg.as_string())
-        return True, "Reset link aapke email par bhej diya gaya hai! Inbox/Spam check karein."
-    except Exception as e:
-        return False, f"Email bhejne me error: {str(e)}"
-
-PORTAL_HTML = """<!DOCTYPE html>
+        ok_mail, mail_msg = send_brevo_email(email, "ANAS AI - Password Reset", f"<p>Click here to reset your password: <a href=\"{reset_link}\">{reset_link}</a></p>")
+        if not ok_mail:
+            raise Exception(mail_msg)
 <html lang="en">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
