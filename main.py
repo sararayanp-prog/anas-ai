@@ -19,7 +19,7 @@ import push_service
 import health_healer
 import backtester
 import saas_db
-from saas_routes import saas_bp
+# from saas_routes import saas_bp
 from structure_engine import analyze_market_structure, ist_now, is_expiry_for_index
 from telegram_alert import send_telegram
 from ai_analyst import generate_premarket_brief, audit_todays_trades
@@ -55,12 +55,12 @@ def tg_webhook():
 import saas_engine
 
 
-@app.route("/saas")
+@app.route("/_old_saas")
 def saas_portal():
     return render_template("saas.html")
 
 
-@app.route("/api/saas/signup", methods=["POST"])
+@app.route("/api/saas/signup_old", methods=["POST"])
 def api_saas_signup():
     data = request.json or {}
     res = saas_engine.create_user(data.get("email",""), data.get("mobile",""), data.get("password",""), data.get("ref_by"))
@@ -83,7 +83,7 @@ def api_saas_approve():
 
 
 
-@app.route("/")
+@app.route("/_old_root")
 def home_index():
     if "saas_portal" in globals():
         return saas_portal()

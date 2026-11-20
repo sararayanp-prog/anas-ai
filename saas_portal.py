@@ -373,6 +373,8 @@ async function resetPw(){
 }
 </script></body></html>"""
 
+@saas_bp.route("/")
+@saas_bp.route("/saas")
 @saas_bp.route("/portal")
 @saas_bp.route("/login")
 @saas_bp.route("/signup")
