@@ -26,6 +26,8 @@ from ai_analyst import generate_premarket_brief, audit_todays_trades
 
 load_dotenv()
 app = Flask(__name__)
+from saas_portal import saas_bp
+app.register_blueprint(saas_bp)
 app.secret_key = os.getenv("FLASK_SECRET", os.getenv("ADMIN_PIN", "0401") + "_sarahics_anas_key")
 app.register_blueprint(saas_bp)
 
