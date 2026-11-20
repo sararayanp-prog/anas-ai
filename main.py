@@ -90,6 +90,31 @@ def home_index():
         return dashboard()
     return "<h1>ANAS AI Quant v10.0 Live</h1><p>Trading Bot & SaaS Platform Active!</p>"
 
+
+@app.route("/api/signin", methods=["POST"])
+def api_signin():
+    import db, hashlib
+    from flask import request, jsonify
+    try:
+        data = request.get_json(force=True) or {}
+        email = str(data.get("email", "")).strip().lower()
+        password = str(data.get("password", "")).strip()
+        pwd_hash = hashlib.sha256(password.encode()).hexdigest()
+        
+        conn = db.get_conn()
+        cur = conn.cursor()
+        cur.execute("SELECT id, name, email, plan_name FROM saas_users WHERE email = %s AND password_hash = %s;", (email, pwd_hash))
+        user = cur.fetchone()
+        conn.close()
+        
+        if not user:
+            return jsonify({"ok": False, "error": "Galat Email ya Password! Kripya dubara check karein."}), 401
+            
+        return jsonify({"ok": True, "message": "Login Successful!", "user": {"id": user[0], "name": user[1], "plan": user[3]}})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 if __name__ == "__main__":
     db.init_db()
     saas_db.init_saas_db()
