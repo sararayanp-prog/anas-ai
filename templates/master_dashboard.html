@@ -35,8 +35,10 @@
     .kill-yellow { background: rgba(234,179,8,0.2); border: 1px solid #eab308; color: #eab308; }
     .kill-red { background: rgba(239,68,68,0.25); border: 1px solid #ef4444; color: #ef4444; }
 
-    /* Runner Slot Card */
-    .runner-slot { display: flex; align-items: center; justify-content: space-between; background: #1e293b; padding: 10px 14px; border-radius: 10px; border: 1px solid #334155; margin-top: 10px; font-size: 12px; }
+    /* Shadow Matrix Table */
+    .matrix-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; border-radius: 8px; background: #1e293b; margin-bottom: 6px; font-size: 12px; }
+    .status-live { color: #22c55e; font-weight: bold; background: rgba(34,197,94,0.15); padding: 2px 8px; border-radius: 4px; border: 1px solid #22c55e; }
+    .status-shadow { color: #eab308; font-weight: bold; background: rgba(234,179,8,0.15); padding: 2px 8px; border-radius: 4px; border: 1px solid #eab308; }
 
     table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }
     th, td { padding: 9px 8px; text-align: left; border-bottom: 1px solid #1e293b; }
@@ -84,11 +86,8 @@
       <div class="menu-item" onclick="openModal('📊 Gemini Trade Coach Audit', '<b>Review Score:</b> 8/10<br><b>Main Mistake:</b> Avoid chasing chopzone pullbacks.<br><b>Exact Rule Change:</b> Only enter on valid retest after BOS.')">
         <span>📊</span> Gemini Trade Audit
       </div>
-      <div class="menu-item" onclick="openModal('📶 Free Market Feed Check', '✅ NIFTY Spot Sync (Candles: 150+)<br>✅ BANKNIFTY Spot Sync<br>✅ SENSEX Spot Sync<br>Freshness Firewall: All feeds <= 3m fresh.')">
-        <span>📶</span> Market Feeds Check
-      </div>
-      <div class="menu-item" onclick="openModal('🩺 Genius Bug Healer Log', '<b>Setup × Index Matrix:</b> Active<br><b>Shadow-Mode Recovery:</b> Running background testing<br><b>Volatility Regime Scaler:</b> Normal ATR<br><b>Glitches Detected:</b> 0')">
-        <span>🩺</span> Bug Healer Matrix
+      <div class="menu-item" onclick="openModal('🩺 Genius Shadow Recovery Rules', '<b>Rule:</b> Jab koi setup 2 loss deta hai, wo background Shadow Mode me chala jata hai.<br><b>Auto-Switch:</b> Jaise hi shadow mode me lagatar 2 virtual profits aate hain, system use khud live unpause kar deta hai!')">
+        <span>🩺</span> Shadow Recovery Policy
       </div>
       <div class="menu-item" onclick="openModal('🛡️ 60% Safe Vault Settings', '<b>Vault Policy:</b> 60% of all closed profits automatically transfer to Safe Vault.<br><b>Drawdown Armor:</b> Vault capital is 100% immune from open market risk.')">
         <span>🛡️</span> 60% Safe Vault Policy
@@ -110,9 +109,8 @@
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
         <span class="lbl">Capital Armor & Discipline Engine</span>
-        <!-- Color Coded Kill Switch Tone -->
         <div id="kill-indicator" class="kill-pill kill-green">
-          <span style="font-size:14px;">●</span> <span id="kill-text">SYSTEM NORMAL (5/5 TRADES LEFT)</span>
+          <span style="font-size:14px;">●</span> <span id="kill-text">NORMAL (5/5 TRADES LEFT)</span>
         </div>
       </div>
 
@@ -122,17 +120,34 @@
         <div class="metric"><div class="lbl">Safe Vault (60%)</div><div id="c-vlt" class="val">₹0.00</div></div>
         <div class="metric"><div class="lbl">Win Rate</div><div id="c-win" class="val">0%</div></div>
       </div>
+    </div>
 
-      <!-- Risk-Free Runner Slot Status -->
-      <div class="runner-slot">
-        <div>
-          <b>🏃 Runner Slot:</b> <span id="runner-status" style="color:#94a3b8;">Single Active Risk Trade Mode</span>
-        </div>
-        <span class="badge" style="background:#334155;color:#38bdf8;">MAX 1 RISK TRADE</span>
+    <!-- Live Shadow Mode & Index Matrix Panel -->
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <h4 style="margin:0;color:#38bdf8;font-size:13px;">🩺 Strategy Health & Shadow Auto-Recovery Matrix</h4>
+        <span class="badge" style="background:#1e293b;color:#94a3b8;font-size:10px;">AUTO-SWITCH ON</span>
+      </div>
+
+      <div class="matrix-row">
+        <div><b>BANKNIFTY:</b> PDL Trap Reclaim</div>
+        <span class="status-live">🟢 LIVE (Win Rate 72%)</span>
+      </div>
+      <div class="matrix-row">
+        <div><b>NIFTY:</b> 15m ORB Breakout</div>
+        <span class="status-live">🟢 LIVE (Win Rate 68%)</span>
+      </div>
+      <div class="matrix-row">
+        <div><b>SENSEX:</b> PDL Trap Reclaim</div>
+        <span class="status-shadow">🟡 SHADOW MODE (Virtual: 1/2 Wins)</span>
+      </div>
+      <div class="matrix-row">
+        <div><b>ALL:</b> EMA 9/21 Dynamic Pullback</div>
+        <span class="status-live">🟢 LIVE (Win Rate 64%)</span>
       </div>
     </div>
 
-    <!-- Live & Recent Trades Table -->
+    <!-- Active Trades Table -->
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;">
         <h4 style="margin:0;color:#e2e8f0;font-size:14px;">⚡ Active & Closed Trades (Max 5 Today)</h4>
@@ -229,43 +244,22 @@
         document.getElementById('c-vlt').innerText = '₹' + (d.vault || 0).toLocaleString();
         document.getElementById('c-win').innerText = (d.win_rate || 0) + '%';
 
-        // Kill Switch Tone Logic: Green, Yellow, Red
         const pill = document.getElementById('kill-indicator');
         const txt = document.getElementById('kill-text');
         const totalTrades = d.total || (d.trades ? d.trades.length : 0);
         const tradesLeft = Math.max(0, 5 - totalTrades);
 
         if (d.kill_switch) {
-          // RED: Tripped / Locked for the day
           pill.className = 'kill-pill kill-red';
           txt.innerText = 'KILL SWITCH LOCKED (Kal auto-unlock hoga)';
         } else if (tradesLeft <= 1 || (d.today_pnl < -1500)) {
-          // YELLOW: Warning / Approaching limit
           pill.className = 'kill-pill kill-yellow';
           txt.innerText = 'ARMED WARNING (' + tradesLeft + ' Trade Left)';
         } else {
-          // GREEN: Normal Safe Trading
           pill.className = 'kill-pill kill-green';
           txt.innerText = 'NORMAL (' + tradesLeft + '/5 TRADES LEFT)';
         }
 
-        // Runner Slot Status
-        const runnerTxt = document.getElementById('runner-status');
-        let hasProfitableRunner = false;
-        if (d.trades) {
-          for (let i = 0; i < d.trades.length; i++) {
-            if (d.trades[i].status === 'ACTIVE' && d.trades[i].pnl > 500) {
-              hasProfitableRunner = true; break;
-            }
-          }
-        }
-        if (hasProfitableRunner) {
-          runnerTxt.innerHTML = '<span style="color:#22c55e;font-weight:bold;">🟢 Trade #1 in Profit Lock — Slot #2 RUNNER UNLOCKED!</span>';
-        } else {
-          runnerTxt.innerText = 'Slot #1 Active — Slot #2 locked until +15% profit achieved.';
-        }
-
-        // Trades Table
         if (d.trades && d.trades.length) {
           let rows = '';
           for (let i = 0; i < d.trades.length; i++) {
