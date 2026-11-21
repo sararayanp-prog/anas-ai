@@ -104,7 +104,7 @@ PORTAL_HTML = """<!DOCTYPE html>
     <div style="font-weight:800; color:#38bdf8; font-size:18px;">ANAS QUANT ECOSYSTEM</div>
     <a href="#" class="sidebar-link" onclick="toggleSidebar(); switchTab('signin')">🔑 Trader Login</a>
     <a href="#" class="sidebar-link" onclick="toggleSidebar(); switchTab('signup')">📝 Register Account</a>
-    <a href="/master-desk?pin=0401" class="sidebar-link" style="border: 1px dashed #eab308; color:#fde047;">🛡️ Master Desk (Admin)</a>
+    
     <a href="https://wa.me/919978982577" target="_blank" class="sidebar-link">💬 WhatsApp Helpdesk</a>
     <a href="https://t.me/sarahics_support" target="_blank" class="sidebar-link">✈️ Telegram Channel</a>
     <div style="margin-top:auto; font-size:11px; color:#64748b; text-align:center;">
@@ -207,11 +207,19 @@ PORTAL_HTML = """<!DOCTYPE html>
         <div class="input-grp">
           <label>Select Broker</label>
           <select id="br_name">
-            <option value="DHAN">Dhan (Recommended & Fastest API)</option>
-            <option value="ANGEL">Angel One</option>
-            <option value="UPSTOX">Upstox Pro</option>
-            <option value="FYERS">Fyers</option>
-          </select>
+            <option value="DHAN">Dhan (Recommended &amp; Fastest API)</option>
+            <option value="ZERODHA">Zerodha (Kite Connect API)</option>
+            <option value="ANGEL">Angel One (SmartAPI)</option>
+            <option value="FYERS">Fyers (API v3)</option>
+            <option value="UPSTOX">Upstox (Plus API)</option>
+            <option value="ALICEBLUE">Alice Blue (ANT API)</option>
+            <option value="SHOONYA">Shoonya / Finvasia (Zero Brokerage)</option>
+            <option value="KOTAK">Kotak Neo (Trade API)</option>
+            <option value="5PAISA">5paisa (Developer API)</option>
+            <option value="ICICI">ICICI Direct (Breeze API)</option>
+            <option value="MOTILAL">Motilal Oswal (MO API)</option>
+            <option value="IIFL">IIFL Securities (TTBlaze API)</option>
+</select>
         </div>
         <div class="input-grp">
           <label>Broker Client ID</label>
@@ -240,7 +248,31 @@ PORTAL_HTML = """<!DOCTYPE html>
 
       <!-- UPI UPGRADE -->
       <div style="background:#0b1329; border:1px solid #334155; border-radius:12px; padding:14px; margin-bottom:14px;">
-        <div style="font-size:13px; font-weight:700; color:#fde047; margin-bottom:4px;">💳 Extend Subscription (Direct UPI)</div>
+        
+        <div style="background:#0b1222;border:1px solid #1e3a5f;border-radius:12px;padding:14px;margin:14px 0;">
+          <div style="font-size:12px;font-weight:700;color:#38bdf8;margin-bottom:6px;">🤝 NEW TRADER? OPEN FREE DEMAT (TOP 4 PARTNER LINKS)</div>
+          <div style="font-size:11px;color:#94a3b8;margin-bottom:10px;">Account nahi hai toh niche partner link se kholein &amp; 1st month priority onboarding paayein:</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+            <a href="https://join.dhan.co/?invite=GOLDV15912" target="_blank" style="text-align:center;padding:8px;border-radius:8px;background:#1e293b;border:1px solid #38bdf8;color:#38bdf8;text-decoration:none;font-size:11px;font-weight:700;">⚡ Open Dhan</a>
+            <a href="https://angel-one.onelink.me/Wjgr/anasquant" target="_blank" style="text-align:center;padding:8px;border-radius:8px;background:#1e293b;border:1px solid #fb923c;color:#fb923c;text-decoration:none;font-size:11px;font-weight:700;">🔶 Open Angel One</a>
+            <a href="https://signup.fyers.in/?utm-source=AP-Lead&utm-medium=ANAS" target="_blank" style="text-align:center;padding:8px;border-radius:8px;background:#1e293b;border:1px solid #4ade80;color:#4ade80;text-decoration:none;font-size:11px;font-weight:700;">🟢 Open Fyers</a>
+            <a href="https://upstox.com/open-account/?f=ANAS" target="_blank" style="text-align:center;padding:8px;border-radius:8px;background:#1e293b;border:1px solid #c084fc;color:#c084fc;text-decoration:none;font-size:11px;font-weight:700;">🟣 Open Upstox</a>
+          </div>
+        </div>
+
+        <div style="background:#0b1222;border:1px solid #1e293b;border-radius:12px;padding:14px;margin:14px 0;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <span style="font-size:12px;font-weight:700;color:#e2e8f0;">📡 DAILY LIVE RADAR (READ-ONLY)</span>
+            <span id="user-ks-badge" style="font-size:10px;font-weight:800;padding:3px 8px;border-radius:999px;background:#14532d;color:#4ade80;">● SYSTEM ACTIVE</span>
+          </div>
+          <div style="font-size:11px;color:#94a3b8;line-height:1.6;">
+            • <b>Engine Mode:</b> Automated Market Structure (No Manual Override)<br>
+            • <b>Support-Lock Shield:</b> Active (9:15 AM – 3:30 PM)<br>
+            • <b>Daily Check:</b> Strategy &amp; Broker Token auto-synced at 8:45 AM
+          </div>
+        </div>
+
+<div style="font-size:13px; font-weight:700; color:#fde047; margin-bottom:4px;">💳 Extend Subscription (Direct UPI)</div>
         <div style="font-size:11px; color:#94a3b8; margin-bottom:8px;">UPI: <strong>Q57363994@ybl</strong> (Sarah ICS SNPL)</div>
         <div class="input-grp">
           <select id="pay_plan">
