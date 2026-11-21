@@ -8,25 +8,38 @@ class CapitalArmor:
     """
 
     @staticmethod
+    @staticmethod
     def audit_feed(candles, max_lag_sec=420):
-        """Rejects trades if data feed is frozen or abnormal spike detected."""
+        """Rejects trades if data feed is frozen, lagged, or abnormal spike detected."""
         if not candles or len(candles) < 2:
             return False, "Data feed empty ya insufficient candles!"
         
         last_candle = candles[-1]
-        c_time = last_candle.get("time") or time.time()
+        raw_time = last_candle.get("time") or last_candle.get("timestamp") or time.time()
         
-        # Stale feed check (> 7 mins old)
+        # Safe timestamp conversion (handles ISO strings and numbers)
+        c_time = time.time()
+        if isinstance(raw_time, (int, float)):
+            c_time = float(raw_time)
+            if c_time > 1e11: c_time = c_time / 1000.0  # Handle milliseconds
+        elif isinstance(raw_time, str):
+            try:
+                from datetime import datetime
+                c_time = datetime.fromisoformat(raw_time.replace("Z", "+00:00")).timestamp()
+            except Exception:
+                c_time = time.time()
+
+        # Stale feed check
         if (time.time() - c_time) > max_lag_sec:
             return False, f"Stale Feed Firewall: Candle {int((time.time() - c_time)/60)}m purani hai. Trade blocked!"
             
-        # Glitch Spike check (> 3.5% jump in single 5m candle)
+        # Glitch Spike check (> 3.5% jump)
         c_open = float(last_candle.get("open", 0))
         c_close = float(last_candle.get("close", 0))
         if c_open > 0:
             jump_pct = abs(c_close - c_open) / c_open * 100
             if jump_pct > 3.5:
-                return False, f"Glitch Spike Alert: Abnormal {jump_pct:.1f}% jump in single candle. Execution rejected!"
+                return False, f"Glitch Spike Alert: Abnormal {jump_pct:.1f}% jump in candle. Execution rejected!"
 
         return True, "Feed Clean & Verified"
 
