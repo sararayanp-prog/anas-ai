@@ -3,49 +3,47 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>ANAS AI QUANT v12.0 — Institutional Trading Desk</title>
+  <title>ANAS AI QUANT v12.0 — Institutional Desk</title>
   <link rel="manifest" href="/manifest.json">
   <style>
     * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; -webkit-tap-highlight-color: transparent; }
     body { margin: 0; background: #070d19; color: #e2e8f0; padding-bottom: 30px; }
     
-    /* Top Header */
     .top-bar { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: #0f172a; border-bottom: 1px solid #1e293b; position: sticky; top: 0; z-index: 100; }
     .hamburger-btn { background: transparent; border: 1px solid #334155; color: #38bdf8; font-size: 20px; border-radius: 8px; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
-    .brand-title { font-size: 16px; font-weight: 800; color: #38bdf8; letter-spacing: 0.5px; display: flex; align-items: center; gap: 8px; }
-    .status-badge { font-size: 11px; padding: 4px 10px; border-radius: 6px; font-weight: bold; background: #15803d; color: #fff; }
-
-    /* Sliding Drawer */
+    .brand-title { font-size: 16px; font-weight: 800; color: #38bdf8; display: flex; align-items: center; gap: 8px; }
+    
     #sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 998; backdrop-filter: blur(2px); }
-    #sidebar-drawer { position: fixed; top: 0; left: -320px; width: 290px; height: 100%; background: #0f172a; border-right: 1px solid #1e293b; z-index: 999; transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1); display: flex; flex-direction: column; box-shadow: 10px 0 35px rgba(0,0,0,0.8); }
+    #sidebar-drawer { position: fixed; top: 0; left: -320px; width: 290px; height: 100%; background: #0f172a; border-right: 1px solid #1e293b; z-index: 999; transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1); display: flex; flex-direction: column; }
     #sidebar-drawer.open { left: 0; }
     .drawer-header { display: flex; justify-content: space-between; align-items: center; padding: 16px; border-bottom: 1px solid #1e293b; }
     .drawer-menu { padding: 12px 10px; overflow-y: auto; flex: 1; }
-    .menu-item { display: flex; align-items: center; gap: 12px; padding: 11px 14px; margin-bottom: 6px; border-radius: 10px; background: #1e293b; color: #cbd5e1; text-decoration: none; font-size: 13px; font-weight: 600; cursor: pointer; border: 1px solid transparent; transition: all 0.2s; }
-    .menu-item:hover, .menu-item:active { background: #334155; border-color: #38bdf8; color: #fff; }
+    .menu-item { display: flex; align-items: center; gap: 12px; padding: 11px 14px; margin-bottom: 6px; border-radius: 10px; background: #1e293b; color: #cbd5e1; text-decoration: none; font-size: 13px; font-weight: 600; cursor: pointer; border: 1px solid transparent; }
+    .menu-item:hover { background: #334155; border-color: #38bdf8; }
 
-    /* Main Container */
     .container { padding: 14px; max-width: 950px; margin: 0 auto; }
-    .card { background: #0f172a; border: 1px solid #1e293b; border-radius: 14px; padding: 16px; margin-bottom: 14px; box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
+    .card { background: #0f172a; border: 1px solid #1e293b; border-radius: 14px; padding: 16px; margin-bottom: 14px; }
     .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 10px; }
     @media(min-width: 600px) { .grid { grid-template-columns: repeat(4, 1fr); } }
     .metric { background: #1e293b; padding: 12px; border-radius: 10px; text-align: center; border: 1px solid #283548; }
     .val { font-size: 18px; font-weight: 800; color: #38bdf8; margin-top: 4px; }
-    .lbl { font-size: 11px; color: #94a3b8; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+    .lbl { font-size: 11px; color: #94a3b8; font-weight: 700; text-transform: uppercase; }
 
-    /* Spot Tickers */
-    .spot-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 8px; }
-    .spot-box { background: #1e293b; padding: 8px; border-radius: 8px; text-align: center; border: 1px solid #283548; }
-    .spot-val { font-size: 14px; font-weight: bold; color: #22c55e; margin-top: 2px; }
+    /* Kill Switch Tone Indicators */
+    .kill-pill { padding: 6px 12px; border-radius: 20px; font-size: 11px; font-weight: 800; display: inline-flex; align-items: center; gap: 6px; }
+    .kill-green { background: rgba(34,197,94,0.15); border: 1px solid #22c55e; color: #22c55e; }
+    .kill-yellow { background: rgba(234,179,8,0.2); border: 1px solid #eab308; color: #eab308; }
+    .kill-red { background: rgba(239,68,68,0.25); border: 1px solid #ef4444; color: #ef4444; }
 
-    /* Table */
+    /* Runner Slot Card */
+    .runner-slot { display: flex; align-items: center; justify-content: space-between; background: #1e293b; padding: 10px 14px; border-radius: 10px; border: 1px solid #334155; margin-top: 10px; font-size: 12px; }
+
     table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }
     th, td { padding: 9px 8px; text-align: left; border-bottom: 1px solid #1e293b; }
-    th { color: #94a3b8; font-size: 11px; font-weight: 600; }
+    th { color: #94a3b8; font-size: 11px; }
     .badge { padding: 3px 8px; border-radius: 6px; font-size: 10px; font-weight: bold; }
     .btn { background: #2563eb; color: #fff; border: none; padding: 8px 14px; border-radius: 8px; font-weight: bold; cursor: pointer; }
 
-    /* Modal for Top 10 & AI Briefs */
     #action-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 1000; justify-content: center; align-items: center; padding: 16px; }
     .modal-content { background: #0f172a; border: 1px solid #38bdf8; border-radius: 14px; width: 100%; max-width: 550px; max-height: 85vh; display: flex; flex-direction: column; overflow: hidden; }
     .modal-header { padding: 14px 16px; border-bottom: 1px solid #1e293b; display: flex; justify-content: space-between; align-items: center; }
@@ -54,7 +52,7 @@
 </head>
 <body>
 
-  <!-- Top Bar with Hamburger -->
+  <!-- Top Header -->
   <div class="top-bar">
     <div style="display:flex;align-items:center;gap:12px;">
       <button class="hamburger-btn" onclick="toggleSidebar()">☰</button>
@@ -63,17 +61,17 @@
           <circle cx="50" cy="50" r="45" stroke="#38bdf8" stroke-width="6" fill="#0b1120"/>
           <path d="M30 65L50 25L70 65H58L50 45L42 65H30Z" fill="#38bdf8"/>
         </svg>
-        ANAS AI QUANT <span style="font-size:11px;color:#f59e0b;background:rgba(245,158,11,0.15);padding:2px 6px;border-radius:4px;border:1px solid #f59e0b;">v12.0</span>
+        ANAS AI QUANT <span style="font-size:10px;color:#f59e0b;background:rgba(245,158,11,0.15);padding:2px 6px;border-radius:4px;border:1px solid #f59e0b;">v12.0</span>
       </div>
     </div>
-    <div id="bridge-status" class="status-badge">DHAN: ACTIVE</div>
+    <div id="dhan-badge" class="badge" style="background:#15803d;color:#fff;font-size:11px;padding:5px 10px;">DHAN: CONNECTED</div>
   </div>
 
-  <!-- Sidebar Overlay & Sliding Drawer -->
+  <!-- Sidebar Control Center -->
   <div id="sidebar-overlay" onclick="toggleSidebar()"></div>
   <aside id="sidebar-drawer">
     <div class="drawer-header">
-      <div style="font-weight:bold;color:#38bdf8;font-size:14px;">⚙️ QUANT CONTROL v12.0</div>
+      <div style="font-weight:bold;color:#38bdf8;font-size:14px;">⚙️ CONTROL CENTER v12.0</div>
       <button onclick="toggleSidebar()" style="background:none;border:none;color:#94a3b8;font-size:22px;cursor:pointer;">✕</button>
     </div>
     <div class="drawer-menu">
@@ -83,20 +81,20 @@
       <div class="menu-item" onclick="openModal('🧠 Gemini Morning Pre-Market Brief', '<b>Bias:</b> CAUTIOUS_SIDEWAYS<br><b>Risk Factor:</b> Expiry Volatility & Global Cues<br><b>Position Sizing:</b> HALF_QTY recommended<br><b>Rule:</b> Wait for 5m candle close confirmation.')">
         <span>🧠</span> Gemini Morning Brief
       </div>
-      <div class="menu-item" onclick="openModal('📊 Gemini Trade Coach Audit', '<b>Review Score:</b> 8/10<br><b>Main Focus:</b> Avoid early entries in chopzone.<br><b>Exact Rule:</b> Retest confirmation after structure break.')">
+      <div class="menu-item" onclick="openModal('📊 Gemini Trade Coach Audit', '<b>Review Score:</b> 8/10<br><b>Main Mistake:</b> Avoid chasing chopzone pullbacks.<br><b>Exact Rule Change:</b> Only enter on valid retest after BOS.')">
         <span>📊</span> Gemini Trade Audit
       </div>
-      <div class="menu-item" onclick="openModal('📶 Free Market Feed Check', '✅ NIFTY Spot Sync<br>✅ BANKNIFTY Spot Sync<br>✅ SENSEX Spot Sync<br>Freshness Firewall: All candles <= 2m fresh.')">
+      <div class="menu-item" onclick="openModal('📶 Free Market Feed Check', '✅ NIFTY Spot Sync (Candles: 150+)<br>✅ BANKNIFTY Spot Sync<br>✅ SENSEX Spot Sync<br>Freshness Firewall: All feeds <= 3m fresh.')">
         <span>📶</span> Market Feeds Check
       </div>
-      <div class="menu-item" onclick="openModal('🔑 Dhan Auto-Token Status', '✅ Client ID: Verified<br>✅ TOTP Engine: Auto-Gen Active<br>✅ Token Expiry: Auto-refreshed daily at 8:50 AM')">
-        <span>🔑</span> Dhan Token Status
+      <div class="menu-item" onclick="openModal('🩺 Genius Bug Healer Log', '<b>Setup × Index Matrix:</b> Active<br><b>Shadow-Mode Recovery:</b> Running background testing<br><b>Volatility Regime Scaler:</b> Normal ATR<br><b>Glitches Detected:</b> 0')">
+        <span>🩺</span> Bug Healer Matrix
       </div>
-      <div class="menu-item" onclick="openModal('🩺 Genius Bug Doctor & Healer', '<b>Matrix Tracking:</b> Setup × Index separation active.<br><b>Shadow Recovery:</b> Background virtual testing ready.<br><b>Status:</b> 0 Glitches. Normal trading permitted.')">
-        <span>🩺</span> Bug Healer Log
+      <div class="menu-item" onclick="openModal('🛡️ 60% Safe Vault Settings', '<b>Vault Policy:</b> 60% of all closed profits automatically transfer to Safe Vault.<br><b>Drawdown Armor:</b> Vault capital is 100% immune from open market risk.')">
+        <span>🛡️</span> 60% Safe Vault Policy
       </div>
-      <div class="menu-item" onclick="toggleKillSwitch()">
-        <span>🛑</span> Emergency Kill Switch
+      <div class="menu-item" onclick="openModal('⏱️ 3:15 PM Squareoff Shield', 'All intraday trades are forcefully closed by 3:15 PM to avoid last-minute expiry theta crush.')">
+        <span>⏱️</span> 3:15 PM Auto-Squareoff
       </div>
       <div style="height:1px;background:#1e293b;margin:10px 0;"></div>
       <a href="/" class="menu-item" style="color:#38bdf8;">
@@ -108,12 +106,16 @@
   <!-- Main Trading Desk -->
   <div class="container">
 
-    <!-- Capital Armor & Metrics -->
+    <!-- Capital Armor & Kill Switch Status -->
     <div class="card">
-      <div style="display:flex;justify-content:space-between;align-items:center;">
-        <span class="lbl">Capital Armor & Risk Engine</span>
-        <span id="kill-badge" class="badge" style="background:#15803d;color:#fff;">NORMAL (ARMOR 100%)</span>
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+        <span class="lbl">Capital Armor & Discipline Engine</span>
+        <!-- Color Coded Kill Switch Tone -->
+        <div id="kill-indicator" class="kill-pill kill-green">
+          <span style="font-size:14px;">●</span> <span id="kill-text">SYSTEM NORMAL (5/5 TRADES LEFT)</span>
+        </div>
       </div>
+
       <div class="grid">
         <div class="metric"><div class="lbl">Capital</div><div id="c-cap" class="val">₹50,000</div></div>
         <div class="metric"><div class="lbl">Today P&L</div><div id="c-pnl" class="val">₹0.00</div></div>
@@ -121,24 +123,25 @@
         <div class="metric"><div class="lbl">Win Rate</div><div id="c-win" class="val">0%</div></div>
       </div>
 
-      <!-- Spot Overview -->
-      <div class="spot-grid">
-        <div class="spot-box"><div class="lbl">NIFTY</div><div id="sp-nifty" class="spot-val">25,291.1</div></div>
-        <div class="spot-box"><div class="lbl">BANKNIFTY</div><div id="sp-bnf" class="spot-val">61,575.9</div></div>
-        <div class="spot-box"><div class="lbl">SENSEX</div><div id="sp-snx" class="spot-val">82,104.8</div></div>
+      <!-- Risk-Free Runner Slot Status -->
+      <div class="runner-slot">
+        <div>
+          <b>🏃 Runner Slot:</b> <span id="runner-status" style="color:#94a3b8;">Single Active Risk Trade Mode</span>
+        </div>
+        <span class="badge" style="background:#334155;color:#38bdf8;">MAX 1 RISK TRADE</span>
       </div>
     </div>
 
-    <!-- Active Trades Table -->
+    <!-- Live & Recent Trades Table -->
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;">
-        <h4 style="margin:0;color:#e2e8f0;font-size:14px;">⚡ Active & Recent Trades</h4>
+        <h4 style="margin:0;color:#e2e8f0;font-size:14px;">⚡ Active & Closed Trades (Max 5 Today)</h4>
         <button class="btn" onclick="fetchState()" style="font-size:11px;padding:6px 12px;">Refresh</button>
       </div>
       <div style="overflow-x:auto;">
         <table>
           <thead>
-            <tr><th>Symbol</th><th>Side</th><th>Entry</th><th>SL</th><th>Target</th><th>P&L</th><th>Status</th></tr>
+            <tr><th>Symbol</th><th>Side</th><th>Entry</th><th>Trail SL</th><th>Target</th><th>P&L</th><th>Status</th></tr>
           </thead>
           <tbody id="trades-body">
             <tr><td colspan="7" style="text-align:center;color:#64748b;">Loading trades...</td></tr>
@@ -187,7 +190,6 @@
       document.getElementById('action-modal').style.display = 'none';
     }
 
-    // Top 10 Strategies 60-Day Leaderboard Modal
     function openTop10Modal() {
       const leaderboardHtml = `
         <div style="font-size:12px;color:#94a3b8;margin-bottom:10px;">
@@ -197,16 +199,12 @@
           <table style="width:100%;font-size:11px;border-collapse:collapse;">
             <thead>
               <tr style="border-bottom:1px solid #334155;">
-                <th style="padding:6px;">#</th>
-                <th style="padding:6px;">Strategy Setup</th>
-                <th style="padding:6px;">Win Rate</th>
-                <th style="padding:6px;">Profit Factor</th>
-                <th style="padding:6px;">Net P&L (₹)</th>
+                <th style="padding:6px;">#</th><th>Setup</th><th>Win Rate</th><th>PF</th><th>Net P&L</th>
               </tr>
             </thead>
             <tbody>
               <tr><td style="padding:6px;">1</td><td style="padding:6px;color:#38bdf8;"><b>Expiry Gamma Theta Scalp</b></td><td style="padding:6px;color:#22c55e;">74%</td><td style="padding:6px;">2.80</td><td style="padding:6px;color:#22c55e;font-weight:bold;">+₹38,500</td></tr>
-              <tr><td style="padding:6px;">2</td><td style="padding:6px;color:#38bdf8;"><b>PDH/PDL Trap Rejection (SMC)</b></td><td style="padding:6px;color:#22c55e;">72%</td><td style="padding:6px;">2.65</td><td style="padding:6px;color:#22c55e;font-weight:bold;">+₹34,120</td></tr>
+              <tr><td style="padding:6px;">2</td><td style="padding:6px;color:#38bdf8;"><b>PDH/PDL Trap Rejection</b></td><td style="padding:6px;color:#22c55e;">72%</td><td style="padding:6px;">2.65</td><td style="padding:6px;color:#22c55e;font-weight:bold;">+₹34,120</td></tr>
               <tr><td style="padding:6px;">3</td><td style="padding:6px;color:#38bdf8;"><b>RSI Divergence + OrderBlock</b></td><td style="padding:6px;color:#22c55e;">70%</td><td style="padding:6px;">2.50</td><td style="padding:6px;color:#22c55e;font-weight:bold;">+₹31,200</td></tr>
               <tr><td style="padding:6px;">4</td><td style="padding:6px;color:#38bdf8;"><b>15m ORB Breakout</b></td><td style="padding:6px;color:#22c55e;">68%</td><td style="padding:6px;">2.34</td><td style="padding:6px;color:#22c55e;font-weight:bold;">+₹28,450</td></tr>
               <tr><td style="padding:6px;">5</td><td style="padding:6px;color:#38bdf8;"><b>ATR Trailing Trend Runner</b></td><td style="padding:6px;color:#22c55e;">65%</td><td style="padding:6px;">2.40</td><td style="padding:6px;color:#22c55e;font-weight:bold;">+₹27,800</td></tr>
@@ -231,15 +229,43 @@
         document.getElementById('c-vlt').innerText = '₹' + (d.vault || 0).toLocaleString();
         document.getElementById('c-win').innerText = (d.win_rate || 0) + '%';
 
-        const kb = document.getElementById('kill-badge');
+        // Kill Switch Tone Logic: Green, Yellow, Red
+        const pill = document.getElementById('kill-indicator');
+        const txt = document.getElementById('kill-text');
+        const totalTrades = d.total || (d.trades ? d.trades.length : 0);
+        const tradesLeft = Math.max(0, 5 - totalTrades);
+
         if (d.kill_switch) {
-          kb.style.background = '#dc2626';
-          kb.innerText = 'KILL SWITCH: ACTIVE';
+          // RED: Tripped / Locked for the day
+          pill.className = 'kill-pill kill-red';
+          txt.innerText = 'KILL SWITCH LOCKED (Kal auto-unlock hoga)';
+        } else if (tradesLeft <= 1 || (d.today_pnl < -1500)) {
+          // YELLOW: Warning / Approaching limit
+          pill.className = 'kill-pill kill-yellow';
+          txt.innerText = 'ARMED WARNING (' + tradesLeft + ' Trade Left)';
         } else {
-          kb.style.background = '#15803d';
-          kb.innerText = 'NORMAL (ARMOR 100%)';
+          // GREEN: Normal Safe Trading
+          pill.className = 'kill-pill kill-green';
+          txt.innerText = 'NORMAL (' + tradesLeft + '/5 TRADES LEFT)';
         }
 
+        // Runner Slot Status
+        const runnerTxt = document.getElementById('runner-status');
+        let hasProfitableRunner = false;
+        if (d.trades) {
+          for (let i = 0; i < d.trades.length; i++) {
+            if (d.trades[i].status === 'ACTIVE' && d.trades[i].pnl > 500) {
+              hasProfitableRunner = true; break;
+            }
+          }
+        }
+        if (hasProfitableRunner) {
+          runnerTxt.innerHTML = '<span style="color:#22c55e;font-weight:bold;">🟢 Trade #1 in Profit Lock — Slot #2 RUNNER UNLOCKED!</span>';
+        } else {
+          runnerTxt.innerText = 'Slot #1 Active — Slot #2 locked until +15% profit achieved.';
+        }
+
+        // Trades Table
         if (d.trades && d.trades.length) {
           let rows = '';
           for (let i = 0; i < d.trades.length; i++) {
@@ -255,13 +281,6 @@
       } catch(e) {
         console.log('State fetch error:', e);
       }
-    }
-
-    async function toggleKillSwitch() {
-      if(!confirm("Kill Switch toggle karna chahte hain?")) return;
-      await fetch('/api/kill-switch', {method: 'POST'});
-      fetchState();
-      toggleSidebar();
     }
 
     fetchState();
