@@ -1,3 +1,4 @@
+from user_portal import user_bp
 from flask import Response, Flask, request, jsonify, render_template
 # ==============================================================================
 # TELEGRAM 1-CLICK INLINE BUTTONS & WEBHOOK ENGINE
