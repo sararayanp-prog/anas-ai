@@ -136,6 +136,12 @@ PORTAL_HTML = """<!DOCTYPE html>
   .qr-box img{border-radius:10px;background:#fff;padding:6px;margin:10px 0;}
   .hidden{display:none;}
 </style>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#070d19">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="apple-touch-icon" href="/static/icon-192.png">
 </head>
 <body>
 <div class="card">
@@ -380,6 +386,78 @@ async function submitUTR(){
 
 if(currentUser){ openPayPortal(currentUser); } else { updateQR(); }
 </script>
+
+<!-- PWA SMART INSTALL SYSTEM -->
+<div id="pwa-guide-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:99999;justify-content:center;align-items:center;padding:16px;">
+  <div style="background:#0f172a;border:1px solid #38bdf8;border-radius:16px;max-width:380px;width:100%;padding:20px;text-align:center;box-shadow:0 10px 40px rgba(0,0,0,0.8);">
+    <div style="font-size:36px;margin-bottom:8px;">📲</div>
+    <h3 style="color:#38bdf8;margin:0 0 10px;font-size:18px;">ANAS AI App Install Karein</h3>
+    <div id="pwa-guide-text" style="color:#cbd5e1;font-size:13px;line-height:1.6;text-align:left;margin-bottom:16px;background:#1e293b;padding:12px;border-radius:10px;">
+      <b>Android Chrome me Install karne ke liye:</b><br>
+      1. Upar right corner me <b>3-Dots (⋮)</b> dabayein.<br>
+      2. <b>'Install app'</b> ya <b>'Add to Home screen'</b> par click karein.<br>
+      3. App aapke phone ke App Drawer me aa jayegi!
+    </div>
+    <button onclick="document.getElementById('pwa-guide-modal').style.display='none'" style="background:#2563eb;color:#fff;border:none;padding:10px 20px;border-radius:8px;font-weight:bold;cursor:pointer;width:100%;">Samajh Gaya (Close)</button>
+  </div>
+</div>
+
+<script>
+let deferredInstallPrompt = null;
+
+// 1. Service Worker Register
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js', { scope: '/' })
+      .then(reg => console.log('✅ ServiceWorker Registered, scope:', reg.scope))
+      .catch(err => console.log('❌ ServiceWorker Error:', err));
+  });
+}
+
+// 2. Capture Install Prompt Event
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  console.log('✅ PWA Install Prompt Captured!');
+  const btn = document.getElementById('btn-pwa-install');
+  if (btn) btn.style.display = 'inline-flex';
+});
+
+// 3. User Installed App Confirmation
+window.addEventListener('appinstalled', () => {
+  console.log('🎉 ANAS AI App Installed Successfully!');
+  deferredInstallPrompt = null;
+  const btn = document.getElementById('btn-pwa-install');
+  if (btn) btn.style.display = 'none';
+});
+
+// 4. Trigger Install or Show Modal
+function triggerPwaInstall() {
+  const isInsideInAppBrowser = /FBAN|FBAV|Instagram|WhatsApp|Telegram/i.test(navigator.userAgent);
+  if (isInsideInAppBrowser) {
+    document.getElementById('pwa-guide-text').innerHTML = 
+      "<b style='color:#ef4444;'>Telegram/WhatsApp Browser Detect Hua!</b><br><br>" +
+      "1. Upar <b>3-dots (⋮)</b> dabayein.<br>" +
+      "2. <b>'Open in Chrome'</b> select karein.<br>" +
+      "3. Uske baad 'Install App' par click karein.";
+    document.getElementById('pwa-guide-modal').style.display = 'flex';
+    return;
+  }
+
+  if (deferredInstallPrompt) {
+    deferredInstallPrompt.prompt();
+    deferredInstallPrompt.userChoice.then((choiceResult) => {
+      if (choiceResult.outcome === 'accepted') {
+        console.log('User accepted PWA install');
+      }
+      deferredInstallPrompt = null;
+    });
+  } else {
+    document.getElementById('pwa-guide-modal').style.display = 'flex';
+  }
+}
+</script>
+
 </body>
 </html>"""
 
@@ -392,7 +470,13 @@ RESET_HTML = """<!DOCTYPE html>
   input{width:100%;padding:12px;margin:8px 0;background:#1e293b;border:1px solid #334155;border-radius:8px;color:#fff;box-sizing:border-box;}
   button{width:100%;padding:12px;background:#2563eb;border:none;border-radius:8px;color:#fff;font-weight:700;cursor:pointer;margin-top:8px;}
   .msg{margin-top:10px;font-size:13px;}
-</style></head>
+</style><link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#070d19">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="apple-touch-icon" href="/static/icon-192.png">
+</head>
 <body><div class="card">
   <h2 style="color:#38bdf8;margin-top:0;">Set New Password</h2>
   <input type="password" id="np1" placeholder="New Password">
@@ -414,7 +498,79 @@ async function resetPw(){
   document.getElementById("rmsg").innerText = d.message || d.error;
   if(d.ok) setTimeout(()=> window.location.href="/portal", 1500);
 }
-</script></body></html>"""
+</script>
+<!-- PWA SMART INSTALL SYSTEM -->
+<div id="pwa-guide-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:99999;justify-content:center;align-items:center;padding:16px;">
+  <div style="background:#0f172a;border:1px solid #38bdf8;border-radius:16px;max-width:380px;width:100%;padding:20px;text-align:center;box-shadow:0 10px 40px rgba(0,0,0,0.8);">
+    <div style="font-size:36px;margin-bottom:8px;">📲</div>
+    <h3 style="color:#38bdf8;margin:0 0 10px;font-size:18px;">ANAS AI App Install Karein</h3>
+    <div id="pwa-guide-text" style="color:#cbd5e1;font-size:13px;line-height:1.6;text-align:left;margin-bottom:16px;background:#1e293b;padding:12px;border-radius:10px;">
+      <b>Android Chrome me Install karne ke liye:</b><br>
+      1. Upar right corner me <b>3-Dots (⋮)</b> dabayein.<br>
+      2. <b>'Install app'</b> ya <b>'Add to Home screen'</b> par click karein.<br>
+      3. App aapke phone ke App Drawer me aa jayegi!
+    </div>
+    <button onclick="document.getElementById('pwa-guide-modal').style.display='none'" style="background:#2563eb;color:#fff;border:none;padding:10px 20px;border-radius:8px;font-weight:bold;cursor:pointer;width:100%;">Samajh Gaya (Close)</button>
+  </div>
+</div>
+
+<script>
+let deferredInstallPrompt = null;
+
+// 1. Service Worker Register
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js', { scope: '/' })
+      .then(reg => console.log('✅ ServiceWorker Registered, scope:', reg.scope))
+      .catch(err => console.log('❌ ServiceWorker Error:', err));
+  });
+}
+
+// 2. Capture Install Prompt Event
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  console.log('✅ PWA Install Prompt Captured!');
+  const btn = document.getElementById('btn-pwa-install');
+  if (btn) btn.style.display = 'inline-flex';
+});
+
+// 3. User Installed App Confirmation
+window.addEventListener('appinstalled', () => {
+  console.log('🎉 ANAS AI App Installed Successfully!');
+  deferredInstallPrompt = null;
+  const btn = document.getElementById('btn-pwa-install');
+  if (btn) btn.style.display = 'none';
+});
+
+// 4. Trigger Install or Show Modal
+function triggerPwaInstall() {
+  const isInsideInAppBrowser = /FBAN|FBAV|Instagram|WhatsApp|Telegram/i.test(navigator.userAgent);
+  if (isInsideInAppBrowser) {
+    document.getElementById('pwa-guide-text').innerHTML = 
+      "<b style='color:#ef4444;'>Telegram/WhatsApp Browser Detect Hua!</b><br><br>" +
+      "1. Upar <b>3-dots (⋮)</b> dabayein.<br>" +
+      "2. <b>'Open in Chrome'</b> select karein.<br>" +
+      "3. Uske baad 'Install App' par click karein.";
+    document.getElementById('pwa-guide-modal').style.display = 'flex';
+    return;
+  }
+
+  if (deferredInstallPrompt) {
+    deferredInstallPrompt.prompt();
+    deferredInstallPrompt.userChoice.then((choiceResult) => {
+      if (choiceResult.outcome === 'accepted') {
+        console.log('User accepted PWA install');
+      }
+      deferredInstallPrompt = null;
+    });
+  } else {
+    document.getElementById('pwa-guide-modal').style.display = 'flex';
+  }
+}
+</script>
+
+</body></html>"""
 
 @saas_bp.route("/")
 @saas_bp.route("/saas")
