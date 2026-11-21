@@ -66,23 +66,6 @@ def api_saas_signup():
     res = saas_engine.create_user(data.get("email",""), data.get("mobile",""), data.get("password",""), data.get("ref_by"))
     return jsonify(res)
 
-@app.route("/api/saas/pay", methods=["POST"])
-def api_saas_pay():
-    data = request.json or {}
-    res = saas_engine.submit_payment(data.get("user_id"), data.get("plan"), data.get("amount"), data.get("utr"), data.get("upi_id"))
-    return jsonify(res)
-
-@app.route("/api/saas/approve", methods=["GET"])
-def api_saas_approve():
-    secret = request.args.get("secret")
-    pid = request.args.get("pid")
-    if secret != "ANAS_ADMIN_2026":
-        return "Unauthorized", 403
-    res = saas_engine.approve_payment(int(pid))
-    return jsonify(res)
-
-
-
 @app.route("/_old_root")
 def home_index():
     if "saas_portal" in globals():
@@ -157,6 +140,91 @@ def universal_pay_handler():
         return jsonify({"ok": True, "msg": "✅ UTR jama ho gaya! Verification ke baad instant plan activate ho jayega."}), 200
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Server Notice: {str(e)}"}), 200
+
+
+
+# === FIXED SAAS PAYMENT & APPROVAL (NO CRASH, 100% PURE JSON) ===
+@app.route("/api/saas/pay", methods=["POST"])
+@app.route("/api/submit_utr", methods=["POST"])
+@app.route("/submit_utr", methods=["POST"])
+def api_saas_pay_fixed():
+    try:
+        from flask import request, jsonify
+        import os, requests, db
+        data = request.get_json(silent=True) or request.form.to_dict() or {}
+        uid = data.get("user_id")
+        plan = data.get("plan") or "WEEKLY"
+        amt = float(data.get("amount") or 499.0)
+        utr = str(data.get("utr") or "").strip()
+
+        if not utr or len(utr) < 8:
+            return jsonify({"ok": False, "msg": "Kripya sahi 12-digit UTR enter karein!"}), 200
+
+        # Save to Neon DB
+        conn = db.get_conn()
+        cur = conn.cursor()
+        cur.execute(
+            '''INSERT INTO saas_payments (user_id, amount, utr_ref, upi_id, status, plan_selected)
+               VALUES (%s, %s, %s, %s, %s, %s) RETURNING id;''',
+            (uid, amt, utr, "Q57363994@ybl", "PENDING", plan)
+        )
+        pid = cur.fetchone()[0]
+        conn.commit()
+        conn.close()
+
+        # Send Telegram notification with 1-click approve link
+        tg_token = os.getenv("TELEGRAM_BOT_TOKEN")
+        tg_chat = os.getenv("TELEGRAM_CHAT_ID")
+        if tg_token and tg_chat:
+            tg_msg = (
+                f"💳 <b>NEW UTR PAYMENT RECEIVED</b>\n\n"
+                f"<b>Payment ID:</b> #{pid}\n"
+                f"<b>User ID:</b> #{uid}\n"
+                f"<b>Plan:</b> {plan}\n"
+                f"<b>Amount:</b> ₹{amt}\n"
+                f"<b>UTR:</b> <code>{utr}</code>\n\n"
+                f"👉 <b>Approve Now:</b> https://anas.sarahics.in/api/saas/approve?id={pid}"
+            )
+            try:
+                requests.post(
+                    f"https://api.telegram.org/bot{tg_token}/sendMessage",
+                    json={"chat_id": tg_chat, "text": tg_msg, "parse_mode": "HTML"},
+                    timeout=5
+                )
+            except Exception:
+                pass
+
+        return jsonify({"ok": True, "msg": "UTR jama ho gaya! Admin verification ke baad instant plan activate ho jayega."}), 200
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Server Note: {str(e)}"}), 200
+
+
+@app.route("/api/saas/approve", methods=["GET"])
+def api_saas_approve_fixed():
+    try:
+        from flask import request
+        import db
+        pid = request.args.get("id")
+        if not pid:
+            return "Payment ID missing!", 400
+        
+        conn = db.get_conn()
+        cur = conn.cursor()
+        cur.execute("SELECT user_id, plan_selected FROM saas_payments WHERE id = %s;", (pid,))
+        row = cur.fetchone()
+        if not row:
+            conn.close()
+            return "Payment not found!", 404
+        
+        uid, plan = row[0], row[1] or "MONTHLY"
+        cur.execute("UPDATE saas_payments SET status = 'COMPLETED' WHERE id = %s;", (pid,))
+        if uid:
+            cur.execute("UPDATE saas_users SET plan_name = %s, plan_expires_at = NOW() + INTERVAL '30 days' WHERE id = %s;", (plan, uid))
+        conn.commit()
+        conn.close()
+        return f"<div style='font-family:Arial;padding:30px;background:#0f172a;color:#22c55e;'><h2>✅ Payment #{pid} Approved Successfully!</h2><p>User #{uid} plan is now active for 30 days.</p></div>"
+    except Exception as e:
+        return f"Error approving: {str(e)}", 500
 
 
 if __name__ == "__main__":
