@@ -518,3 +518,37 @@ def api_submit_utr():
         f"UTR: <code>{utr}</code>"
     )
     return jsonify({"ok": True, "payment_id": pid})
+
+
+
+@saas_bp.route("/api/saas/pay", methods=["POST"])
+def api_saas_pay():
+    try:
+        data = request.get_json(force=True, silent=True) or {}
+        uid = data.get("user_id")
+        plan = data.get("plan", "WEEKLY")
+        amt = float(data.get("amount", 499.0))
+        utr = str(data.get("utr", "")).strip()
+        upi = str(data.get("upi_id", "Q57363994@ybl")).strip()
+        
+        if not uid or not utr:
+            return jsonify({"ok": False, "msg": "User ID aur valid UTR Reference Number zaroori hai!"}), 200
+            
+        conn = db.get_conn()
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO saas_payments (user_id, amount, utr, utr_ref, plan, plan_selected, upi_id, status)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, 'PENDING')
+            RETURNING id;
+        """, (uid, amt, utr, utr, plan, plan, upi))
+        pid = cur.fetchone()[0]
+        conn.commit()
+        conn.close()
+        
+        # Admin Alert to Telegram
+        msg = f"💳 <b>Naya Payment Approval Request!</b>\n\n• Payment ID: #{pid}\n• User ID: #{uid}\n• Plan: {plan}\n• Amount: ₹{amt}\n• UTR: <code>{utr}</code>\n• UPI: {upi}\n\nApproval ke liye TG Bot ya Dashboard use karein."
+        send_tg_admin(msg)
+        
+        return jsonify({"ok": True, "msg": "UTR successfully submit ho gaya hai! Verification ke baad instant activate ho jayega.", "payment_id": pid}), 200
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Payment Submit Error: {str(e)}"}), 200
