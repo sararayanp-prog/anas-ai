@@ -79,7 +79,25 @@
       <button onclick="toggleSidebar()" style="background:none;border:none;color:#94a3b8;font-size:22px;cursor:pointer;">✕</button>
     </div>
     <div class="drawer-menu">
-      <div class="menu-item" onclick="openTop10Modal()" style="border-color:#38bdf8;background:rgba(56,189,248,0.1);">
+      
+    <div class="menu-item" onclick="callMasterApi('/api/backtest', '🔬 60-Day Backtest Report')">🔬 Backtest 60D <span style="margin-left:auto;color:#f472b6;font-size:10px;">QUANT</span></div>
+    <div class="menu-item" onclick="callMasterApi('/api/setup-stats', '📈 Setup Stats (Win/Loss)')">📈 Setup Stats <span style="margin-left:auto;color:#2dd4bf;font-size:10px;">LIVE</span></div>
+    <div class="menu-item" onclick="callMasterApi('/api/health', '🩺 System Health & Jarvis Healer')">🩺 System Health (Jarvis) <span style="margin-left:auto;color:#4ade80;font-size:10px;">AUTO</span></div>
+    <div class="menu-item" onclick="window.open('/api/export-csv', '_blank')">📥 Export CSV</div>
+    <div style="font-size:10px;color:#64748b;padding:8px 4px 2px;letter-spacing:1px;">ALERTS & API TESTS</div>
+    <div class="menu-item" onclick="callMasterApi('/api/test-telegram', '✈️ Telegram Test')">✈️ Test Telegram</div>
+    <div class="menu-item" onclick="callMasterApi('/api/test-push', '🔔 Direct Push Test')">🔔 Test Push</div>
+    <div class="menu-item" onclick="callMasterApi('/api/test-dhan', '📡 Dhan API Test')">📡 Test Dhan</div>
+    <div style="font-size:10px;color:#64748b;padding:8px 4px 2px;letter-spacing:1px;">DHAN TOKEN & RESET</div>
+    <div style="padding:4px 0;">
+      <input id="dhanTokInp" placeholder="Paste Dhan Access Token" style="width:100%;padding:7px;border-radius:6px;border:1px solid #334155;background:#0b1120;color:#fff;font-size:11px;margin-bottom:4px;">
+      <button onclick="saveDhanTok()" style="width:100%;padding:7px;border-radius:6px;border:none;background:#0284c7;color:#fff;font-size:11px;font-weight:700;cursor:pointer;">💾 Save Dhan Token</button>
+    </div>
+    <div style="padding:4px 0;">
+      <button onclick="resetTestData()" style="width:100%;padding:7px;border-radius:6px;border:none;background:#b91c1c;color:#fff;font-size:11px;font-weight:700;cursor:pointer;">🧹 Reset Test Data</button>
+    </div>
+
+    <div class="menu-item" onclick="openTop10Modal()" style="border-color:#38bdf8;background:rgba(56,189,248,0.1);">
         <span>🏆</span> <b>Top 10 Strategies (60D)</b>
       </div>
       <div class="menu-item" onclick="fetchLiveGeminiBrief()">
@@ -363,6 +381,28 @@
 
     fetchStage2State();
     setInterval(fetchStage2State, 5000);
-  </script>
+  
+async function callMasterApi(url, title) {
+  try {
+    const r = await fetch(url);
+    const d = await r.json();
+    openModal(title, '<pre style="white-space:pre-wrap;font-size:11px;color:#e2e8f0;">' + JSON.stringify(d, null, 2) + '</pre>');
+  } catch(e) { openModal(title, 'Error: ' + e); }
+}
+async function saveDhanTok() {
+  const tok = document.getElementById('dhanTokInp').value;
+  const r = await fetch('/api/save-token', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({token: tok, pin: MASTER_PIN})});
+  const d = await r.json();
+  alert(d.msg || 'Done');
+}
+async function resetTestData() {
+  if(!confirm('Reset test capital & kill switch?')) return;
+  const r = await fetch('/api/reset-data', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({pin: MASTER_PIN})});
+  const d = await r.json();
+  alert(d.msg || 'Done');
+  if (typeof fetchStage2State === 'function') fetchStage2State();
+}
+
+</script>
 </body>
 </html>
