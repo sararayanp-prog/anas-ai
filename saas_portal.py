@@ -226,6 +226,12 @@ PORTAL_HTML = """<!DOCTYPE html>
 
   <div class="support">
     <a class="sup-btn wa" href="https://wa.me/{{ wa_no }}?text=Hi%20ANAS%20AI%20Support%2C%20mujhe%20help%20chahiye" target="_blank">💬 WhatsApp Support</a>
+      <div style="text-align:center;margin-top:14px;">
+        <a href="/admin" style="display:inline-block;color:#38bdf8;text-decoration:none;font-size:12px;font-weight:600;padding:6px 14px;border:1px solid #1e293b;border-radius:8px;background:rgba(56,189,248,0.08);">
+          ⚙️ Open Master Quant Desk (Admin)
+        </a>
+      </div>
+
     <a class="sup-btn tg" href="{{ tg_url }}" target="_blank">✈️ Telegram Support</a>
   </div>
 </div>
@@ -719,3 +725,135 @@ def api_submit_utr():
 
 
 
+
+
+
+@saas_bp.route('/admin')
+@saas_bp.route('/quant')
+def saas_admin_panel():
+    return '''<!DOCTYPE html>
+<html lang="hi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ANAS AI QUANT — Master Trading Desk</title>
+  <link rel="manifest" href="/manifest.json">
+  <style>
+    * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+    body { margin: 0; background: #070d19; color: #e2e8f0; padding: 14px; }
+    .card { background: #0f172a; border: 1px solid #1e293b; border-radius: 14px; padding: 16px; margin-bottom: 12px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-top: 10px; }
+    .metric { background: #1e293b; padding: 12px; border-radius: 10px; text-align: center; }
+    .val { font-size: 18px; font-weight: 800; color: #38bdf8; margin-top: 4px; }
+    .lbl { font-size: 11px; color: #94a3b8; font-weight: 600; text-transform: uppercase; }
+    .btn { background: #2563eb; color: #fff; border: none; padding: 8px 14px; border-radius: 8px; font-weight: bold; cursor: pointer; }
+    .btn-red { background: #dc2626; }
+    .btn-green { background: #16a34a; }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 12px; }
+    th, td { padding: 8px; text-align: left; border-bottom: 1px solid #1e293b; }
+    th { color: #94a3b8; font-size: 11px; }
+    .badge { padding: 3px 8px; border-radius: 6px; font-size: 10px; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <div class="card" style="display:flex;justify-content:space-between;align-items:center;">
+    <div>
+      <h2 style="margin:0;color:#38bdf8;font-size:20px;">⚡ ANAS AI MASTER QUANT</h2>
+      <small style="color:#94a3b8;">Prop-Desk Institutional Trading Desk</small>
+    </div>
+    <a href="/" class="btn" style="text-decoration:none;font-size:12px;background:#334155;">User Portal</a>
+  </div>
+
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <span class="lbl">Capital Armor & P&L</span>
+      <span id="kill-badge" class="badge" style="background:#15803d;color:#fff;">KILL SWITCH: OFF</span>
+    </div>
+    <div class="grid">
+      <div class="metric"><div class="lbl">Capital</div><div id="c-cap" class="val">₹50,000</div></div>
+      <div class="metric"><div class="lbl">Today P&L</div><div id="c-pnl" class="val">₹0.00</div></div>
+      <div class="metric"><div class="lbl">Safe Vault</div><div id="c-vlt" class="val">₹0.00</div></div>
+      <div class="metric"><div class="lbl">Win Rate</div><div id="c-win" class="val">0%</div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="lbl">Spot Feeds & Expiry Watch</div>
+    <div class="grid">
+      <div class="metric"><div class="lbl">NIFTY</div><div id="sp-nifty" class="val">--</div></div>
+      <div class="metric"><div class="lbl">BANKNIFTY</div><div id="sp-bnf" class="val">--</div></div>
+      <div class="metric"><div class="lbl">SENSEX</div><div id="sp-snx" class="val">--</div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <h4 style="margin:0;color:#e2e8f0;">⚡ Active & Recent Trades</h4>
+      <button class="btn" onclick="fetchState()" style="font-size:11px;padding:6px 12px;">Refresh</button>
+    </div>
+    <div style="overflow-x:auto;">
+      <table>
+        <thead>
+          <tr><th>Symbol</th><th>Side</th><th>Entry</th><th>SL</th><th>Target</th><th>P&L</th><th>Status</th></tr>
+        </thead>
+        <tbody id="trades-body">
+          <tr><td colspan="7" style="text-align:center;color:#64748b;">Loading trades...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card" style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
+    <button class="btn btn-red" onclick="toggleKill()">Toggle Kill Switch</button>
+    <button class="btn btn-green" onclick="alert('Dhan Live Bridge Active!')">Dhan Status OK</button>
+  </div>
+
+  <script>
+    async function fetchState() {
+      try {
+        const res = await fetch('/api/state');
+        const d = await res.json();
+        document.getElementById('c-cap').innerText = '₹' + (d.capital || 0).toLocaleString();
+        document.getElementById('c-pnl').innerText = '₹' + (d.today_pnl || 0).toLocaleString();
+        document.getElementById('c-vlt').innerText = '₹' + (d.vault || 0).toLocaleString();
+        document.getElementById('c-win').innerText = (d.win_rate || 0) + '%';
+
+        const kb = document.getElementById('kill-badge');
+        if (d.kill_switch) {
+          kb.style.background = '#dc2626';
+          kb.innerText = 'KILL SWITCH: ACTIVE';
+        } else {
+          kb.style.background = '#15803d';
+          kb.innerText = 'KILL SWITCH: READY';
+        }
+
+        if (d.trades && d.trades.length) {
+          document.getElementById('trades-body').innerHTML = d.trades.map(t => `
+            <tr>
+              <td><b>${t.symbol}</b></td>
+              <td style="color:${t.side.includes('CE')?'#22c55e':'#ef4444'}">${t.side}</td>
+              <td>₹${t.entry}</td>
+              <td>₹${t.trail_sl}</td>
+              <td>₹${t.target}</td>
+              <td style="font-weight:bold;color:${t.pnl>=0?'#22c55e':'#ef4444'}">₹${t.pnl}</td>
+              <td><span class="badge" style="background:#334155;">${t.status}</span></td>
+            </tr>
+          `).join('');
+        } else {
+          document.getElementById('trades-body').innerHTML = '<tr><td colspan="7" style="text-align:center;color:#64748b;">No trades executed today</td></tr>';
+        }
+      } catch(e) {
+        console.log('State fetch error:', e);
+      }
+    }
+
+    async function toggleKill() {
+      if(!confirm("Kill Switch state badalna chahte hain?")) return;
+      await fetch('/api/kill-switch', {method: 'POST'});
+      fetchState();
+    }
+    fetchState();
+    setInterval(fetchState, 5000);
+  </script>
+</body>
+</html>'''
