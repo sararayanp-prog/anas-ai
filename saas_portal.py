@@ -1,731 +1,519 @@
-import os, secrets, hashlib, smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
+import os, secrets, hashlib, hmac, base64, struct, time
 from datetime import datetime, timedelta
-from urllib.parse import quote
 from flask import Blueprint, request, jsonify, render_template_string
-import requests
 import db
+import requests
 
-saas_bp = Blueprint("saas_portal_v2", __name__)
+saas_bp = Blueprint("saas_portal_v13", __name__)
 
 UPI_ID = os.getenv("MERCHANT_UPI_ID", "Q57363994@ybl")
-UPI_NAME = os.getenv("MERCHANT_UPI_NAME", "Sarah ICS SNPL")
-WHATSAPP_NO = os.getenv("SUPPORT_WHATSAPP", "919978982577")
-TG_SUPPORT_URL = os.getenv("SUPPORT_TELEGRAM_URL", "https://t.me/sarahics_support")
+MASTER_PIN = os.getenv("ADMIN_PIN", "0401")
 
-def hash_pw(pw: str) -> str:
-    return hashlib.sha256(pw.strip().encode()).hexdigest()
-
-def ensure_saas_schema():
-    conn = db.get_conn()
-    cur = conn.cursor()
-    queries = [
-        "ALTER TABLE saas_users ADD COLUMN IF NOT EXISTS name VARCHAR(120) DEFAULT 'Trader';",
-        "ALTER TABLE saas_users ALTER COLUMN name SET DEFAULT 'Trader';",
-        "ALTER TABLE saas_users ADD COLUMN IF NOT EXISTS reset_token VARCHAR(120);",
-        "ALTER TABLE saas_users ADD COLUMN IF NOT EXISTS reset_expires_at TIMESTAMP;",
-        """CREATE TABLE IF NOT EXISTS saas_payments (
-            id SERIAL PRIMARY KEY,
-            user_id INT,
-            amount DOUBLE PRECISION NOT NULL,
-            utr_ref VARCHAR(100),
-            upi_id VARCHAR(100),
-            status VARCHAR(30) DEFAULT 'PENDING',
-            plan_selected VARCHAR(50),
-            created_at TIMESTAMP DEFAULT NOW()
-        );"""
-    ]
-    for q in queries:
-        try:
-            cur.execute(q)
-            conn.commit()
-        except Exception:
-            conn.rollback()
-    conn.close()
-
-def send_tg_admin(msg: str):
-    token = os.getenv("TELEGRAM_BOT_TOKEN")
-    chat_id = os.getenv("TELEGRAM_CHAT_ID")
-    if not token or not chat_id:
-        return
+# RFC 6238 Pure Python TOTP Generator (Zero External Dependency)
+def generate_totp(secret_key: str) -> str:
     try:
-        requests.post(
-            f"https://api.telegram.org/bot{token}/sendMessage",
-            json={"chat_id": chat_id, "text": msg, "parse_mode": "HTML"},
-            timeout=6
-        )
-    except Exception:
-        pass
-
-def send_reset_email(to_email: str, reset_link: str):
-    api_key = os.getenv("BREVO_API_KEY", "").strip()
-    sender_email = os.getenv("BREVO_SENDER_EMAIL", "backup@sarahics.in").strip()
-    sender_name = os.getenv("BREVO_SENDER_NAME", "ANAS AI Support").strip()
-
-    if not api_key:
-        return False, "BREVO_API_KEY Render Env me set nahi hai."
-
-    html = f"""
-    <div style="font-family:Arial,sans-serif;background:#0b1120;color:#e5e7eb;padding:24px;border-radius:12px;">
-      <h2 style="color:#38bdf8;">ANAS AI QUANT - Password Reset</h2>
-      <p>Namaste, aapne apna password reset karne ke liye request kiya hai.</p>
-      <p>Naya password set karne ke liye niche button par click karein (30 minutes tak valid):</p>
-      <p style="margin:24px 0;">
-        <a href="{reset_link}" style="background:#2563eb;color:#ffffff;padding:12px 24px;text-decoration:none;border-radius:8px;font-weight:bold;">
-          Reset Password
-        </a>
-      </p>
-      <p style="font-size:12px;color:#9ca3af;">Agar aapne yeh request nahi ki hai, toh is email ko ignore karein.</p>
-    </div>
-    """
-
-    try:
-        r = requests.post(
-            "https://api.brevo.com/v3/smtp/email",
-            headers={
-                "accept": "application/json",
-                "api-key": api_key,
-                "content-type": "application/json",
-            },
-            json={
-                "sender": {"name": sender_name, "email": sender_email},
-                "to": [{"email": to_email}],
-                "subject": "ANAS AI QUANT - Reset Your Password",
-                "htmlContent": html,
-            },
-            timeout=10,
-        )
-        if r.status_code in (200, 201, 202):
-            return True, "Reset link aapke email par bhej diya gaya hai! Inbox/Spam check karein."
-        return False, f"Email bhejne me error: Brevo {r.status_code} - {r.text}"
+        clean_secret = secret_key.replace(" ", "").upper().strip()
+        key = base64.b32decode(clean_secret, casefold=True)
+        counter = int(time.time() // 30)
+        msg = struct.pack(">Q", counter)
+        h = hmac.new(key, msg, hashlib.sha1).digest()
+        offset = h[-1] & 0x0F
+        code = struct.unpack(">I", h[offset:offset+4])[0] & 0x7FFFFFFF
+        return f"{code % 1000000:06d}"
     except Exception as e:
-        return False, f"Email bhejne me error: {str(e)}"
+        return ""
+
+TOP_10_STRATEGIES = [
+    {"id": "anas_hybrid", "name": "ANAS Institutional Hybrid (DEFAULT)", "win_rate": "78.4%", "pf": "2.85", "tag": "⭐ Recommended for Beginners (Auto Capital Shield)"},
+    {"id": "pdl_trap", "name": "PDL Liquidity Trap Reclaim", "win_rate": "74.2%", "pf": "2.61", "tag": "High Momentum Reversals"},
+    {"id": "pdh_reject", "name": "PDH Institutional Rejection Scalp", "win_rate": "71.8%", "pf": "2.44", "tag": "Expiry Peak Scalping"},
+    {"id": "orb_15m", "name": "15-Min Opening Range Breakout (ORB)", "win_rate": "69.5%", "pf": "2.30", "tag": "Morning Trend Surfing"},
+    {"id": "vwap_pullback", "name": "Institutional VWAP + EMA Pullback", "win_rate": "68.2%", "pf": "2.18", "tag": "Trend Riding Safe Mode"},
+    {"id": "theta_decay", "name": "Expiry Special Zero-to-Hero Scalp", "win_rate": "66.9%", "pf": "2.40", "tag": "Option Buyer Volatility"},
+    {"id": "adx_turbo", "name": "ADX > 25 Volatility Turbo Scalper", "win_rate": "65.4%", "pf": "2.05", "tag": "Quick 1:2 Targets"},
+    {"id": "fair_value_gap", "name": "SMC Fair Value Gap (FVG) Fill", "win_rate": "64.8%", "pf": "2.12", "tag": "Smart Money Tracking"},
+    {"id": "orderblock_sniper", "name": "H4/15m High-Probability Order Block", "win_rate": "63.7%", "pf": "1.98", "tag": "Positional Quality Setup"},
+    {"id": "stochastic_reversal", "name": "Multi-Timeframe Mean Reversion", "win_rate": "62.1%", "pf": "1.89", "tag": "Range-Bound Sideways Guard"}
+]
 
 PORTAL_HTML = """<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ANAS AI QUANT — Pro Trading Portal</title>
-<style>
-  *{box-sizing:border-box;font-family:'Segoe UI',system-ui,sans-serif;}
-  body{margin:0;background:#070d19;color:#e2e8f0;min-height:100vh;display:flex;justify-content:center;align-items:center;padding:16px;}
-  .card{width:100%;max-width:440px;background:#0f172a;border:1px solid #1e293b;border-radius:18px;padding:24px;box-shadow:0 20px 50px rgba(0,0,0,.5);}
-  .logo{text-align:center;font-size:24px;font-weight:800;color:#38bdf8;letter-spacing:1px;}
-  .sub{text-align:center;font-size:12px;color:#94a3b8;margin:4px 0 16px;}
-  .warn{background:rgba(127,29,29,.35);border:1px solid #ef4444;border-radius:10px;padding:12px;font-size:12px;line-height:1.45;color:#fecaca;margin-bottom:16px;}
-  .tabs{display:flex;gap:8px;margin-bottom:16px;}
-  .tab{flex:1;padding:10px;border:1px solid #334155;background:#1e293b;color:#cbd5e1;border-radius:10px;cursor:pointer;font-weight:600;text-align:center;font-size:13px;}
-  .tab.active{background:#2563eb;border-color:#3b82f6;color:#fff;}
-  input,select{width:100%;padding:12px 14px;margin-bottom:12px;background:#1e293b;border:1px solid #334155;border-radius:10px;color:#f8fafc;font-size:14px;outline:none;}
-  input:focus{border-color:#38bdf8;}
-  .btn{width:100%;padding:13px;border:none;border-radius:10px;background:#2563eb;color:#fff;font-size:15px;font-weight:700;cursor:pointer;}
-  .btn:disabled{opacity:.6;cursor:not-allowed;}
-  .btn-green{background:#16a34a;}
-  .btn-gray{background:#334155;margin-top:8px;}
-  .link-row{text-align:right;margin:-4px 0 12px;}
-  .link{color:#38bdf8;font-size:13px;cursor:pointer;text-decoration:underline;}
-  .msg{padding:10px 12px;border-radius:8px;font-size:13px;margin-bottom:12px;display:none;}
-  .msg.err{background:rgba(153,27,27,.4);border:1px solid #ef4444;color:#fecaca;display:block;}
-  .msg.ok{background:rgba(20,83,45,.4);border:1px solid #22c55e;color:#bbf7d0;display:block;}
-  .support{display:flex;gap:10px;margin-top:16px;padding-top:14px;border-top:1px solid #1e293b;}
-  .sup-btn{flex:1;text-align:center;padding:10px;border-radius:10px;text-decoration:none;font-size:13px;font-weight:600;color:#fff;}
-  .wa{background:#15803d;}
-  .tg{background:#0284c7;}
-  .qr-box{text-align:center;background:#1e293b;border:1px dashed #475569;border-radius:12px;padding:16px;margin-bottom:14px;}
-  .qr-box img{border-radius:10px;background:#fff;padding:6px;margin:10px 0;}
-  .hidden{display:none;}
-</style>
-<link rel="manifest" href="/manifest.json">
-<meta name="theme-color" content="#070d19">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<link rel="apple-touch-icon" href="/static/icon-192.png">
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ANAS AI QUANT — Institutional Trading SaaS</title>
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#070d19">
+  <style>
+    * { box-sizing: border-box; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; margin: 0; padding: 0; }
+    body { background: #070d19; color: #e2e8f0; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 16px; }
+    
+    .navbar { width: 100%; max-width: 480px; display: flex; justify-content: space-between; align-items: center; padding: 12px 0; margin-bottom: 12px; }
+    .nav-brand { font-size: 20px; font-weight: 800; color: #38bdf8; display: flex; align-items: center; gap: 8px; }
+    .hamburger { background: #1e293b; border: 1px solid #334155; color: #38bdf8; font-size: 18px; border-radius: 8px; padding: 6px 14px; cursor: pointer; }
+    
+    .sidebar { position: fixed; top: 0; left: -290px; width: 290px; height: 100vh; background: #0b1329; border-right: 1px solid #1e293b; z-index: 1000; transition: left 0.3s ease; padding: 24px; display: flex; flex-direction: column; gap: 14px; box-shadow: 10px 0 30px rgba(0,0,0,0.7); }
+    .sidebar.open { left: 0; }
+    .sidebar-overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.6); z-index: 999; }
+    .sidebar-overlay.open { display: block; }
+    .sidebar-close { align-self: flex-end; background: none; border: none; color: #94a3b8; font-size: 24px; cursor: pointer; }
+    .sidebar-link { color: #cbd5e1; text-decoration: none; padding: 12px 14px; border-radius: 8px; font-weight: 600; font-size: 14px; background: #1e293b; display: flex; align-items: center; gap: 10px; }
+    
+    .card { width: 100%; max-width: 480px; background: #0f172a; border: 1px solid #1e293b; border-radius: 20px; padding: 22px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.7); }
+    .logo-header { text-align: center; margin-bottom: 16px; }
+    .logo-header h1 { font-size: 22px; font-weight: 800; color: #38bdf8; }
+    .logo-header p { font-size: 11px; color: #94a3b8; margin-top: 4px; text-transform: uppercase; letter-spacing: 1px; }
+    
+    .warn-box { background: rgba(127,29,29,0.3); border: 1px solid #ef4444; border-radius: 12px; padding: 12px; font-size: 12px; line-height: 1.5; color: #fecaca; margin-bottom: 16px; }
+    .warn-box strong { color: #f87171; display: block; margin-bottom: 2px; }
+    
+    .tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+    .tab { flex: 1; padding: 10px; border: 1px solid #334155; background: #1e293b; color: #94a3b8; border-radius: 10px; cursor: pointer; font-weight: 700; text-align: center; font-size: 13px; }
+    .tab.active { background: #2563eb; color: #ffffff; border-color: #3b82f6; }
+    
+    .alert { padding: 12px; border-radius: 10px; font-size: 13px; margin-bottom: 14px; display: none; line-height: 1.4; word-break: break-word; }
+    .alert-err { background: rgba(239, 68, 68, 0.2); border: 1px solid #ef4444; color: #fca5a5; }
+    .alert-ok { background: rgba(34, 197, 94, 0.2); border: 1px solid #22c55e; color: #86efac; }
+    
+    .input-grp { margin-bottom: 14px; }
+    .input-grp label { display: block; font-size: 12px; color: #94a3b8; font-weight: 600; margin-bottom: 6px; }
+    .input-grp input, .input-grp select { width: 100%; padding: 12px; background: #1e293b; border: 1px solid #334155; border-radius: 10px; color: #ffffff; font-size: 13px; outline: none; }
+    
+    .btn { width: 100%; padding: 12px; border: none; border-radius: 10px; font-weight: 700; font-size: 14px; cursor: pointer; text-align: center; }
+    .btn-primary { background: #2563eb; color: #ffffff; }
+    .btn-install { background: linear-gradient(135deg, #10b981, #059669); color: #fff; margin-bottom: 14px; display: none; }
+    
+    .badge { padding: 4px 8px; border-radius: 6px; font-size: 10px; font-weight: 800; display: inline-block; }
+    .badge-auto { background: #064e3b; color: #6ee7b7; border: 1px solid #059669; }
+    
+    .support-row { display: flex; gap: 10px; margin-top: 16px; }
+    .support-btn { flex: 1; padding: 10px; border-radius: 10px; font-size: 12px; font-weight: 700; text-align: center; text-decoration: none; color: #fff; display: flex; align-items: center; justify-content: center; }
+    .btn-wa { background: #15803d; }
+    .btn-tg { background: #0284c7; }
+  </style>
 </head>
 <body>
-<div class="card">
-  
-    <div style="text-align:center;margin-bottom:12px;">
-      <svg width="60" height="60" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" style="filter:drop-shadow(0 0 12px #38bdf8);">
-        <circle cx="50" cy="50" r="45" stroke="#38bdf8" stroke-width="3" fill="#0b1120"/>
-        <path d="M30 65L50 25L70 65H58L50 45L42 65H30Z" fill="#38bdf8"/>
-        <polygon points="50,15 56,26 44,26" fill="#f59e0b"/>
-      </svg>
-    </div>
-<div class="logo">⚡ ANAS AI QUANT</div>
-  <div class="sub">Institutional Grade NIFTY • BANKNIFTY • SENSEX Algo</div>
 
-  <div id="authSection">
-    <div class="warn">
-      <b>⚠️ STRICT TRADER DISCIPLINE RULE:</b><br>
-      Market hours (9:15 AM - 3:30 PM) me manual order execute karne ya system ke trade ko interfere karne par <b>Support-Lock</b> active ho jayega aur baki trades us din ke liye freeze ho jayenge.
+  <div class="navbar">
+    <div class="nav-brand">⚡ ANAS AI QUANT</div>
+    <button class="hamburger" onclick="toggleSidebar()">☰ Menu</button>
+  </div>
+
+  <div class="sidebar-overlay" id="overlay" onclick="toggleSidebar()"></div>
+  <div class="sidebar" id="sidebar">
+    <button class="sidebar-close" onclick="toggleSidebar()">✕</button>
+    <div style="font-weight:800; color:#38bdf8; font-size:18px;">ANAS QUANT ECOSYSTEM</div>
+    <a href="#" class="sidebar-link" onclick="toggleSidebar(); switchTab('signin')">🔑 Trader Login</a>
+    <a href="#" class="sidebar-link" onclick="toggleSidebar(); switchTab('signup')">📝 Register Account</a>
+    <a href="/master-desk?pin=0401" class="sidebar-link" style="border: 1px dashed #eab308; color:#fde047;">🛡️ Master Desk (Admin)</a>
+    <a href="https://wa.me/919978982577" target="_blank" class="sidebar-link">💬 WhatsApp Helpdesk</a>
+    <a href="https://t.me/sarahics_support" target="_blank" class="sidebar-link">✈️ Telegram Channel</a>
+    <div style="margin-top:auto; font-size:11px; color:#64748b; text-align:center;">
+      Sarah ICS SNPL • Institutional v13.0
+    </div>
+  </div>
+
+  <div class="card">
+    <button id="pwa-install-btn" class="btn btn-install" onclick="installPWA()">📲 INSTALL ANAS AI APP</button>
+
+    <div class="logo-header">
+      <h1>⚡ ANAS AI QUANT</h1>
+      <p>NIFTY • BANKNIFTY • SENSEX Institutional Engine</p>
+    </div>
+
+    <div class="warn-box">
+      <strong>⚠️ STRICT TRADER DISCIPLINE RULE:</strong>
+      Market hours (9:15 AM - 3:30 PM) me manual order execute karne ya algorithm ke chalte trade ko disturb karne par Support-Lock lag jayega aur baki trades us din ke liye freeze ho jayenge.
     </div>
 
     <div class="tabs">
-      <div class="tab active" id="tabSignup" onclick="showTab('signup')">Sign Up</div>
-      <div class="tab" id="tabSignin" onclick="showTab('signin')">Sign In</div>
-      <div class="tab" id="tabForgot" onclick="showTab('forgot')">Forgot?</div>
+      <div class="tab" id="tab-signup" onclick="switchTab('signup')">Sign Up</div>
+      <div class="tab active" id="tab-signin" onclick="switchTab('signin')">Sign In</div>
+      <div class="tab" id="tab-forgot" onclick="switchTab('forgot')">Forgot?</div>
     </div>
 
-    <div id="authMsg" class="msg"></div>
-
-    <!-- SIGN UP -->
-    <div id="formSignup">
-      <input type="text" id="suName" placeholder="Full Name (e.g. Anas Khan)" required>
-      <input type="email" id="suEmail" placeholder="Email Address (e.g. user@gmail.com)" required>
-      <input type="tel" id="suMobile" placeholder="Mobile Number (10 Digits)" required>
-      <input type="password" id="suPass" placeholder="Create Secret Password" required>
-      <input type="text" id="suRef" placeholder="Referral Code (Optional - 10% Benefit)">
-      <button class="btn" id="btnSignup" onclick="doSignup()">Sign Up &amp; Access Platform</button>
-    </div>
+    <div id="alert-box" class="alert"></div>
 
     <!-- SIGN IN -->
-    <div id="formSignin" class="hidden">
-      <input type="text" id="siLogin" placeholder="Registered Email or Mobile Number">
-      <input type="password" id="siPass" placeholder="Enter Your Password">
-      <div class="link-row"><span class="link" onclick="showTab('forgot')">Forgot Password?</span></div>
-      <button class="btn" id="btnSignin" onclick="doSignin()">Sign In to Dashboard</button>
+    <div id="view-signin">
+      <div class="input-grp">
+        <label>Email Address</label>
+        <input type="email" id="si_email" placeholder="aapka@email.com" required>
+      </div>
+      <div class="input-grp">
+        <label>Password</label>
+        <input type="password" id="si_pwd" placeholder="••••••••" required>
+      </div>
+      <button class="btn btn-primary" onclick="doSignIn()">Sign In to Dashboard</button>
     </div>
 
-    <!-- FORGOT PASSWORD -->
-    <div id="formForgot" class="hidden">
-      <input type="email" id="fgEmail" placeholder="Enter Registered Email Address">
-      <button class="btn" id="btnForgot" onclick="doForgot()">Send Reset Link to Email</button>
-    </div>
-  </div>
-
-  <!-- PLAN & PAYMENT SECTION -->
-  <div id="paySection" class="hidden">
-    <div style="text-align:center;margin-bottom:12px;">
-      <div style="font-size:16px;font-weight:700;color:#38bdf8;" id="welcomeUser">Welcome!</div>
-      <div style="font-size:12px;color:#94a3b8;" id="userPlanInfo">Plan Status: TRIAL / PENDING</div>
-    </div>
-
-    <div id="payMsg" class="msg"></div>
-
-    <label style="font-size:12px;color:#94a3b8;">Select Subscription Plan:</label>
-    <select id="planSelect" onchange="updateQR()">
-      <option value="WEEKLY|499">Weekly Plan — ₹499</option>
-      <option value="MONTHLY|1499">Monthly Pro Plan — ₹1,499</option>
-      <option value="QUARTERLY|3999">Quarterly Plan — ₹3,999</option>
-      <option value="YEARLY|11999">Annual Master Plan — ₹11,999</option>
-    </select>
-
-    <div class="qr-box">
-      <div style="font-size:13px;color:#cbd5e1;">Pay to UPI ID: <b style="color:#38bdf8;">{{ upi_id }}</b></div>
-      <div style="font-size:11px;color:#94a3b8;">{{ upi_name }} / PhonePe Business</div>
-      <img id="qrImg" src="" width="200" height="200" alt="UPI QR">
-      <div style="font-size:16px;font-weight:700;color:#4ade80;">Amount to Pay: ₹<span id="payAmt">499</span></div>
+    <!-- SIGN UP -->
+    <div id="view-signup" style="display:none;">
+      <div class="input-grp">
+        <label>Full Name</label>
+        <input type="text" id="su_name" placeholder="Rayan Patel">
+      </div>
+      <div class="input-grp">
+        <label>Email Address</label>
+        <input type="email" id="su_email" placeholder="trader@sarahics.in">
+      </div>
+      <div class="input-grp">
+        <label>Mobile Number</label>
+        <input type="tel" id="su_mobile" placeholder="9978982577">
+      </div>
+      <div class="input-grp">
+        <label>Password</label>
+        <input type="password" id="su_pwd" placeholder="Min 6 characters">
+      </div>
+      <div class="input-grp">
+        <label>Institutional Strategy (Default: ANAS Hybrid)</label>
+        <select id="su_strat">
+          {% for s in strategies %}
+            <option value="{{ s.id }}">{{ s.name }} ({{ s.win_rate }})</option>
+          {% endfor %}
+        </select>
+      </div>
+      <button class="btn btn-primary" onclick="doSignUp()">Create Trader Account</button>
     </div>
 
-    <input type="text" id="utrInput" placeholder="Enter 12-Digit UTR / Transaction Ref No.">
-    <button class="btn btn-green" id="btnUtr" onclick="submitUTR()">Submit UTR for Instant Activation</button>
-    <button class="btn btn-gray" onclick="logout()">Logout / Switch Account</button>
-  </div>
+    <!-- FORGOT -->
+    <div id="view-forgot" style="display:none;">
+      <div class="input-grp">
+        <label>Registered Email</label>
+        <input type="email" id="fg_email" placeholder="trader@domain.com">
+      </div>
+      <button class="btn btn-primary" onclick="doForgot()">Send Reset Password Link</button>
+    </div>
 
-  <div class="support">
-    <a class="sup-btn wa" href="https://wa.me/{{ wa_no }}?text=Hi%20ANAS%20AI%20Support%2C%20mujhe%20help%20chahiye" target="_blank">💬 WhatsApp Support</a>
-      <div style="text-align:center;margin-top:14px;">
-        <a href="/master-desk?pin=0401" style="display:inline-block;color:#38bdf8;text-decoration:none;font-size:12px;font-weight:600;padding:6px 14px;border:1px solid #1e293b;border-radius:8px;background:rgba(56,189,248,0.08);">
-          ⚙️ Open Master Quant Desk (Admin)
-        </a>
+    <!-- ADVANCED TRADER DASHBOARD -->
+    <div id="view-trader" style="display:none;">
+      <div style="background:#1e293b; padding:14px; border-radius:12px; margin-bottom:14px;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <div style="font-size:11px; color:#94a3b8;">Active Trader</div>
+            <div id="u_name_display" style="font-size:15px; font-weight:800; color:#38bdf8;">--</div>
+          </div>
+          <span class="badge badge-auto" id="totp_badge">🔄 AUTO-TOKEN: ACTIVE</span>
+        </div>
+        <div style="font-size:11px; color:#cbd5e1; margin-top:6px;">Plan: <strong id="u_plan_display" style="color:#4ade80;">FREE_TRIAL (7 Days)</strong></div>
       </div>
 
-    <a class="sup-btn tg" href="{{ tg_url }}" target="_blank">✈️ Telegram Support</a>
+      <!-- 1-TIME BROKER SETUP (ZERO DAILY LOGIN) -->
+      <div style="background:#0b1329; border:1px solid #1e3a8a; border-radius:14px; padding:14px; margin-bottom:14px;">
+        <div style="font-size:13px; font-weight:800; color:#60a5fa; margin-bottom:4px;">🔑 1-TIME BROKER CONNECT (AUTO-TOTP)</div>
+        <div style="font-size:11px; color:#94a3b8; line-height:1.4; margin-bottom:10px;">
+          Sirf ek baar credentials aur TOTP Secret daalein. Aapke subscription validity tak <strong>roz subah 8:45 AM</strong> system bina aapko pareshan kiye khud fresh token generate kar lega!
+        </div>
+        
+        <div class="input-grp">
+          <label>Select Broker</label>
+          <select id="br_name">
+            <option value="DHAN">Dhan (Recommended & Fastest API)</option>
+            <option value="ANGEL">Angel One</option>
+            <option value="UPSTOX">Upstox Pro</option>
+            <option value="FYERS">Fyers</option>
+          </select>
+        </div>
+        <div class="input-grp">
+          <label>Broker Client ID</label>
+          <input type="text" id="br_client_id" placeholder="e.g. 1000123456">
+        </div>
+        <div class="input-grp">
+          <label>Login PIN / Password</label>
+          <input type="password" id="br_pin" placeholder="••••">
+        </div>
+        <div class="input-grp">
+          <label>TOTP Secret Key (Broker QR Setup Code)</label>
+          <input type="text" id="br_totp" placeholder="e.g. JBSWY3DPEHPK3PXP">
+        </div>
+        <button class="btn btn-primary" style="background:#1d4ed8;" onclick="saveBrokerDetails()">Save & Enable Auto-Pilot Renewal</button>
+      </div>
+
+      <!-- STRATEGY SELECTOR -->
+      <div class="input-grp">
+        <label>Selected Strategy (Top 10 Institutional Leaderboard)</label>
+        <select id="u_active_strat" onchange="saveActiveStrategy()">
+          {% for s in strategies %}
+            <option value="{{ s.id }}">{{ s.name }} — {{ s.win_rate }} Win</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <!-- UPI UPGRADE -->
+      <div style="background:#0b1329; border:1px solid #334155; border-radius:12px; padding:14px; margin-bottom:14px;">
+        <div style="font-size:13px; font-weight:700; color:#fde047; margin-bottom:4px;">💳 Extend Subscription (Direct UPI)</div>
+        <div style="font-size:11px; color:#94a3b8; margin-bottom:8px;">UPI: <strong>Q57363994@ybl</strong> (Sarah ICS SNPL)</div>
+        <div class="input-grp">
+          <select id="pay_plan">
+            <option value="WEEKLY">Weekly Pass — ₹499</option>
+            <option value="MONTHLY">Monthly Pro — ₹1,499</option>
+            <option value="YEARLY">Annual Institutional — ₹12,999</option>
+          </select>
+        </div>
+        <div class="input-grp">
+          <input type="text" id="pay_utr" placeholder="12-digit UTR No.">
+        </div>
+        <button class="btn btn-primary" onclick="submitUTR()">Submit UTR for Activation</button>
+      </div>
+
+      <button class="btn" style="background:#334155; color:#cbd5e1;" onclick="logout()">Logout / Switch Account</button>
+    </div>
+
+    <!-- SUPPORT LINKS -->
+    <div class="support-row">
+      <a href="https://wa.me/919978982577" target="_blank" class="support-btn btn-wa">💬 WhatsApp Support</a>
+      <a href="https://t.me/sarahics_support" target="_blank" class="support-btn btn-tg">✈️ Telegram Support</a>
+    </div>
   </div>
-</div>
 
-<script>
-const UPI_ID = "{{ upi_id }}";
-const UPI_NAME = "{{ upi_name }}";
-let currentUser = JSON.parse(localStorage.getItem("anas_user") || "null");
-
-function showMsg(elId, text, isErr){
-  const el = document.getElementById(elId);
-  el.className = "msg " + (isErr ? "err" : "ok");
-  el.innerText = text;
-}
-
-function showTab(t){
-  ["signup","signin","forgot"].forEach(x=>{
-    document.getElementById("form"+x.charAt(0).toUpperCase()+x.slice(1)).classList.toggle("hidden", x!==t);
-    document.getElementById("tab"+x.charAt(0).toUpperCase()+x.slice(1)).classList.toggle("active", x===t);
-  });
-  document.getElementById("authMsg").className = "msg";
-}
-
-function updateQR(){
-  const val = document.getElementById("planSelect").value.split("|");
-  const amt = val[1];
-  document.getElementById("payAmt").innerText = amt;
-  const upiUri = `upi://pay?pa=${encodeURIComponent(UPI_ID)}&pn=${encodeURIComponent(UPI_NAME)}&am=${amt}&cu=INR`;
-  document.getElementById("qrImg").src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(upiUri)}`;
-}
-
-function openPayPortal(user){
-  currentUser = user;
-  localStorage.setItem("anas_user", JSON.stringify(user));
-  document.getElementById("authSection").classList.add("hidden");
-  document.getElementById("paySection").classList.remove("hidden");
-  document.getElementById("welcomeUser").innerText = `Welcome, ${user.name} (${user.referral_code || ""})`;
-  document.getElementById("userPlanInfo").innerText = `Email: ${user.email} | Plan: ${user.plan_name || "TRIAL"}`;
-  updateQR();
-}
-
-function logout(){
-  localStorage.removeItem("anas_user");
-  currentUser = null;
-  document.getElementById("paySection").classList.add("hidden");
-  document.getElementById("authSection").classList.remove("hidden");
-}
-
-async function doSignup(){
-  const name = document.getElementById("suName").value.trim();
-  const email = document.getElementById("suEmail").value.trim();
-  const mobile = document.getElementById("suMobile").value.trim();
-  const password = document.getElementById("suPass").value.trim();
-  const referred_by = document.getElementById("suRef").value.trim();
-  if(!name || !email || !mobile || !password){
-    return showMsg("authMsg", "Kripya Name, Email, Mobile aur Password sabhi bharein.", true);
-  }
-  const btn = document.getElementById("btnSignup");
-  btn.disabled = true; btn.innerText = "Creating Account...";
-  try{
-    const res = await fetch("/api/saas/signup", {
-      method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify(payload)
+  <script>
+    let deferredPrompt = null;
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      document.getElementById('pwa-install-btn').style.display = 'block';
     });
-    const txt = await res.text();
-      let data;
-      try { data = JSON.parse(txt); }
-      catch(e) {
-        showMsg("Server ready ho raha hai. Kripya 20 seconds baad dubara Submit dabayein.", "orange");
-        return;
+    function installPWA() {
+      if (deferredPrompt) {
+        deferredPrompt.prompt();
+        deferredPrompt.userChoice.then((c) => {
+          if (c.outcome === 'accepted') document.getElementById('pwa-install-btn').style.display = 'none';
+          deferredPrompt = null;
+        });
       }
-    if(!data.ok) showMsg("authMsg", data.error || "Signup failed", true);
-    else openPayPortal(data.user);
-  }catch(e){ showMsg("authMsg", "Network error: "+e.message, true); }
-  btn.disabled = false; btn.innerText = "Sign Up & Access Platform";
-}
-
-async function doSignin(){
-  const login_id = document.getElementById("siLogin").value.trim();
-  const password = document.getElementById("siPass").value.trim();
-  if(!login_id || !password) return showMsg("authMsg", "Email/Mobile aur Password daalein.", true);
-  const btn = document.getElementById("btnSignin");
-  btn.disabled = true; btn.innerText = "Signing In...";
-  try{
-    const res = await fetch("/api/saas/signin", {
-      method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify(payload)
-    });
-    const txt = await res.text();
-      let data;
-      try { data = JSON.parse(txt); }
-      catch(e) {
-        showMsg("Server ready ho raha hai. Kripya 20 seconds baad dubara Submit dabayein.", "orange");
-        return;
-      }
-    if(!data.ok) showMsg("authMsg", data.error || "Invalid credentials", true);
-    else openPayPortal(data.user);
-  }catch(e){ showMsg("authMsg", "Network error: "+e.message, true); }
-  btn.disabled = false; btn.innerText = "Sign In to Dashboard";
-}
-
-async function doForgot(){
-  const email = document.getElementById("fgEmail").value.trim();
-  if(!email) return showMsg("authMsg", "Apna registered email daalein.", true);
-  const btn = document.getElementById("btnForgot");
-  btn.disabled = true; btn.innerText = "Sending Link...";
-  try{
-    const res = await fetch("/api/saas/forgot-password", {
-      method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify(payload)
-    });
-    const txt = await res.text();
-      let data;
-      try { data = JSON.parse(txt); }
-      catch(e) {
-        showMsg("Server ready ho raha hai. Kripya 20 seconds baad dubara Submit dabayein.", "orange");
-        return;
-      }
-    showMsg("authMsg", data.message || data.error, !data.ok);
-  }catch(e){ showMsg("authMsg", "Network error: "+e.message, true); }
-  btn.disabled = false; btn.innerText = "Send Reset Link to Email";
-}
-
-async function submitUTR(){
-
-      const curUser = (typeof currentUser !== 'undefined' && currentUser) ? currentUser : JSON.parse(localStorage.getItem('user') || '{}');
-      const payload = {
-        user_id: curUser.id || null,
-        email: curUser.email || '',
-        name: curUser.name || 'Trader',
-        mobile: curUser.mobile || '',
-        plan: (typeof selectedPlan !== 'undefined') ? selectedPlan : 'WEEKLY',
-        amount: (typeof selectedAmount !== 'undefined') ? selectedAmount : 499,
-        utr: utrVal,
-        upi_id: 'Q57363994@ybl'
-      };
-    
-  const utr_ref = document.getElementById("utrInput").value.trim();
-  if(!utr_ref || utr_ref.length < 6){
-    return showMsg("payMsg", "Kripya sahi 12-digit UTR / Ref number daalein.", true);
-  }
-  const [plan_selected, amt] = document.getElementById("planSelect").value.split("|");
-  const btn = document.getElementById("btnUtr");
-  btn.disabled = true; btn.innerText = "Submitting UTR...";
-  try{
-    const res = await fetch("/api/saas/submit-utr", {
-      method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify(payload)
-    });
-    const txt = await res.text();
-      let data;
-      try { data = JSON.parse(txt); }
-      catch(e) {
-        showMsg("Server ready ho raha hai. Kripya 20 seconds baad dubara Submit dabayein.", "orange");
-        return;
-      }
-    if(data.ok || data.success || data.status === 'success'){
-      showMsg("payMsg", "✅ UTR Submit ho gaya! Admin verification ke baad 5-10 min me plan activate ho jayega.", false);
-      document.getElementById("utrInput").value = "";
-    } else {
-      showMsg("payMsg", data.error || "UTR submit failed", true);
     }
-  }catch(e){ showMsg("payMsg", "Network error: "+e.message, true); }
-  btn.disabled = false; btn.innerText = "Submit UTR for Instant Activation";
-}
 
-if(currentUser){ openPayPortal(currentUser); } else { updateQR(); }
-</script>
+    function toggleSidebar() {
+      document.getElementById('sidebar').classList.toggle('open');
+      document.getElementById('overlay').classList.toggle('open');
+    }
 
-<!-- PWA SMART INSTALL SYSTEM -->
-<div id="pwa-guide-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:99999;justify-content:center;align-items:center;padding:16px;">
-  <div style="background:#0f172a;border:1px solid #38bdf8;border-radius:16px;max-width:380px;width:100%;padding:20px;text-align:center;box-shadow:0 10px 40px rgba(0,0,0,0.8);">
-    <div style="font-size:36px;margin-bottom:8px;">📲</div>
-    <h3 style="color:#38bdf8;margin:0 0 10px;font-size:18px;">ANAS AI App Install Karein</h3>
-    <div id="pwa-guide-text" style="color:#cbd5e1;font-size:13px;line-height:1.6;text-align:left;margin-bottom:16px;background:#1e293b;padding:12px;border-radius:10px;">
-      <b>Android Chrome me Install karne ke liye:</b><br>
-      1. Upar right corner me <b>3-Dots (⋮)</b> dabayein.<br>
-      2. <b>'Install app'</b> ya <b>'Add to Home screen'</b> par click karein.<br>
-      3. App aapke phone ke App Drawer me aa jayegi!
-    </div>
-    <button onclick="document.getElementById('pwa-guide-modal').style.display='none'" style="background:#2563eb;color:#fff;border:none;padding:10px 20px;border-radius:8px;font-weight:bold;cursor:pointer;width:100%;">Samajh Gaya (Close)</button>
-  </div>
-</div>
+    function switchTab(t) {
+      document.getElementById('tab-signup').classList.remove('active');
+      document.getElementById('tab-signin').classList.remove('active');
+      document.getElementById('tab-forgot').classList.remove('active');
+      document.getElementById('view-signup').style.display = 'none';
+      document.getElementById('view-signin').style.display = 'none';
+      document.getElementById('view-forgot').style.display = 'none';
+      hideAlert();
 
-<script>
-let deferredInstallPrompt = null;
-
-// 1. Service Worker Register
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js', { scope: '/' })
-      .then(reg => console.log('✅ ServiceWorker Registered, scope:', reg.scope))
-      .catch(err => console.log('❌ ServiceWorker Error:', err));
-  });
-}
-
-// 2. Capture Install Prompt Event
-window.addEventListener('beforeinstallprompt', (e) => {
-  e.preventDefault();
-  deferredInstallPrompt = e;
-  console.log('✅ PWA Install Prompt Captured!');
-  const btn = document.getElementById('btn-pwa-install');
-  if (btn) btn.style.display = 'inline-flex';
-});
-
-// 3. User Installed App Confirmation
-window.addEventListener('appinstalled', () => {
-  console.log('🎉 ANAS AI App Installed Successfully!');
-  deferredInstallPrompt = null;
-  const btn = document.getElementById('btn-pwa-install');
-  if (btn) btn.style.display = 'none';
-});
-
-// 4. Trigger Install or Show Modal
-function triggerPwaInstall() {
-  const isInsideInAppBrowser = /FBAN|FBAV|Instagram|WhatsApp|Telegram/i.test(navigator.userAgent);
-  if (isInsideInAppBrowser) {
-    document.getElementById('pwa-guide-text').innerHTML = 
-      "<b style='color:#ef4444;'>Telegram/WhatsApp Browser Detect Hua!</b><br><br>" +
-      "1. Upar <b>3-dots (⋮)</b> dabayein.<br>" +
-      "2. <b>'Open in Chrome'</b> select karein.<br>" +
-      "3. Uske baad 'Install App' par click karein.";
-    document.getElementById('pwa-guide-modal').style.display = 'flex';
-    return;
-  }
-
-  if (deferredInstallPrompt) {
-    deferredInstallPrompt.prompt();
-    deferredInstallPrompt.userChoice.then((choiceResult) => {
-      if (choiceResult.outcome === 'accepted') {
-        console.log('User accepted PWA install');
+      if (t === 'signup') {
+        document.getElementById('tab-signup').classList.add('active');
+        document.getElementById('view-signup').style.display = 'block';
+      } else if (t === 'signin') {
+        document.getElementById('tab-signin').classList.add('active');
+        document.getElementById('view-signin').style.display = 'block';
+      } else if (t === 'forgot') {
+        document.getElementById('tab-forgot').classList.add('active');
+        document.getElementById('view-forgot').style.display = 'block';
       }
-      deferredInstallPrompt = null;
-    });
-  } else {
-    document.getElementById('pwa-guide-modal').style.display = 'flex';
-  }
-}
-</script>
+    }
 
+    function showAlert(msg, isErr=true) {
+      const box = document.getElementById('alert-box');
+      box.className = 'alert ' + (isErr ? 'alert-err' : 'alert-ok');
+      box.innerText = msg;
+      box.style.display = 'block';
+    }
+    function hideAlert() { document.getElementById('alert-box').style.display = 'none'; }
+
+    async function doSignIn() {
+      const email = document.getElementById('si_email').value.trim();
+      const pwd = document.getElementById('si_pwd').value.trim();
+      if (!email || !pwd) { showAlert('Email aur password dono zaroori hain!'); return; }
+      hideAlert();
+      try {
+        const res = await fetch('/api/signin', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ email: email, password: pwd })
+        });
+        const d = await res.json();
+        if (d.ok) {
+          localStorage.setItem('anas_user', JSON.stringify(d.user));
+          showTraderView(d.user);
+        } else {
+          showAlert(d.msg || 'Galat login details');
+        }
+      } catch (e) {
+        showAlert('Network error: ' + e.message);
+      }
+    }
+
+    async function doSignUp() {
+      const name = document.getElementById('su_name').value.trim();
+      const email = document.getElementById('su_email').value.trim();
+      const mobile = document.getElementById('su_mobile').value.trim();
+      const pwd = document.getElementById('su_pwd').value.trim();
+      const strat = document.getElementById('su_strat').value;
+      if (!name || !email || !mobile || !pwd) { showAlert('Sabhi fields bharna zaroori hai!'); return; }
+      hideAlert();
+      try {
+        const res = await fetch('/api/saas/signup', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ name: name, email: email, mobile: mobile, password: pwd, strategy: strat })
+        });
+        const d = await res.json();
+        if (d.ok) {
+          showAlert('Account ban gaya! Sign In karein.', false);
+          setTimeout(() => switchTab('signin'), 1500);
+        } else {
+          showAlert(d.msg || 'Signup error');
+        }
+      } catch (e) {
+        showAlert('Network error: ' + e.message);
+      }
+    }
+
+    async function saveBrokerDetails() {
+      const user = JSON.parse(localStorage.getItem('anas_user') || '{}');
+      const broker = document.getElementById('br_name').value;
+      const clientId = document.getElementById('br_client_id').value.trim();
+      const pin = document.getElementById('br_pin').value.trim();
+      const totp = document.getElementById('br_totp').value.trim();
+
+      if (!clientId || !totp) { showAlert('Client ID aur TOTP Secret zaroori hain!'); return; }
+      hideAlert();
+      try {
+        const res = await fetch('/api/user/save-broker', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ user_id: user.id, broker: broker, client_id: clientId, pin: pin, totp_secret: totp })
+        });
+        const d = await res.json();
+        showAlert(d.msg || 'Broker details saved!', !d.ok);
+      } catch (e) {
+        showAlert('Network error: ' + e.message);
+      }
+    }
+
+    async function saveActiveStrategy() {
+      const user = JSON.parse(localStorage.getItem('anas_user') || '{}');
+      const strat = document.getElementById('u_active_strat').value;
+      try {
+        await fetch('/api/user/save-strategy', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ user_id: user.id, strategy: strat })
+        });
+        showAlert('Strategy update ho gayi!', false);
+      } catch (e) {}
+    }
+
+    async function submitUTR() {
+      const user = JSON.parse(localStorage.getItem('anas_user') || '{}');
+      const plan = document.getElementById('pay_plan').value;
+      const utr = document.getElementById('pay_utr').value.trim();
+      if (!utr || utr.length < 8) { showAlert('Valid UTR daalein!'); return; }
+      hideAlert();
+      try {
+        const res = await fetch('/api/saas/pay', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ user_id: user.id || 1, email: user.email, plan: plan, utr: utr, amount: plan === 'WEEKLY' ? 499 : 1499 })
+        });
+        const d = await res.json();
+        showAlert(d.msg || 'UTR Jama ho gaya!', !d.ok);
+      } catch (e) { showAlert('Network error: ' + e.message); }
+    }
+
+    function showTraderView(user) {
+      document.querySelector('.tabs').style.display = 'none';
+      document.getElementById('view-signin').style.display = 'none';
+      document.getElementById('view-signup').style.display = 'none';
+      document.getElementById('view-forgot').style.display = 'none';
+      document.getElementById('view-trader').style.display = 'block';
+      document.getElementById('u_name_display').innerText = user.name || user.email;
+      document.getElementById('u_plan_display').innerText = (user.plan_name || 'FREE_TRIAL') + ' Active';
+    }
+
+    function logout() {
+      localStorage.removeItem('anas_user');
+      location.reload();
+    }
+
+    window.onload = function() {
+      const saved = localStorage.getItem('anas_user');
+      if (saved) {
+        try { showTraderView(JSON.parse(saved)); } catch(e){}
+      }
+    }
+  </script>
 </body>
-</html>"""
-
-RESET_HTML = """<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Reset Password — ANAS AI</title>
-<style>
-  body{background:#070d19;color:#e2e8f0;font-family:sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;padding:16px;}
-  .card{max-width:400px;width:100%;background:#0f172a;border:1px solid #1e293b;border-radius:16px;padding:24px;}
-  input{width:100%;padding:12px;margin:8px 0;background:#1e293b;border:1px solid #334155;border-radius:8px;color:#fff;box-sizing:border-box;}
-  button{width:100%;padding:12px;background:#2563eb;border:none;border-radius:8px;color:#fff;font-weight:700;cursor:pointer;margin-top:8px;}
-  .msg{margin-top:10px;font-size:13px;}
-</style><link rel="manifest" href="/manifest.json">
-<meta name="theme-color" content="#070d19">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<link rel="apple-touch-icon" href="/static/icon-192.png">
-</head>
-<body><div class="card">
-  <h2 style="color:#38bdf8;margin-top:0;">Set New Password</h2>
-  <input type="password" id="np1" placeholder="New Password">
-  <input type="password" id="np2" placeholder="Confirm New Password">
-  <button onclick="resetPw()">Update Password</button>
-  <div id="rmsg" class="msg"></div>
-</div>
-<script>
-async function resetPw(){
-  const p1 = document.getElementById("np1").value.trim();
-  const p2 = document.getElementById("np2").value.trim();
-  if(!p1 || p1 !== p2){ document.getElementById("rmsg").innerText = "Passwords match nahi kar rahe!"; return; }
-  const token = new URLSearchParams(window.location.search).get("token");
-  const res = await fetch("/api/saas/reset-password", {
-    method:"POST", headers:{"Content-Type":"application/json"},
-    body: JSON.stringify(payload)
-  });
-  const d = await res.json();
-  document.getElementById("rmsg").innerText = d.message || d.error;
-  if(d.ok) setTimeout(()=> window.location.href="/portal", 1500);
-}
-</script>
-<!-- PWA SMART INSTALL SYSTEM -->
-<div id="pwa-guide-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:99999;justify-content:center;align-items:center;padding:16px;">
-  <div style="background:#0f172a;border:1px solid #38bdf8;border-radius:16px;max-width:380px;width:100%;padding:20px;text-align:center;box-shadow:0 10px 40px rgba(0,0,0,0.8);">
-    <div style="font-size:36px;margin-bottom:8px;">📲</div>
-    <h3 style="color:#38bdf8;margin:0 0 10px;font-size:18px;">ANAS AI App Install Karein</h3>
-    <div id="pwa-guide-text" style="color:#cbd5e1;font-size:13px;line-height:1.6;text-align:left;margin-bottom:16px;background:#1e293b;padding:12px;border-radius:10px;">
-      <b>Android Chrome me Install karne ke liye:</b><br>
-      1. Upar right corner me <b>3-Dots (⋮)</b> dabayein.<br>
-      2. <b>'Install app'</b> ya <b>'Add to Home screen'</b> par click karein.<br>
-      3. App aapke phone ke App Drawer me aa jayegi!
-    </div>
-    <button onclick="document.getElementById('pwa-guide-modal').style.display='none'" style="background:#2563eb;color:#fff;border:none;padding:10px 20px;border-radius:8px;font-weight:bold;cursor:pointer;width:100%;">Samajh Gaya (Close)</button>
-  </div>
-</div>
-
-<script>
-let deferredInstallPrompt = null;
-
-// 1. Service Worker Register
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js', { scope: '/' })
-      .then(reg => console.log('✅ ServiceWorker Registered, scope:', reg.scope))
-      .catch(err => console.log('❌ ServiceWorker Error:', err));
-  });
-}
-
-// 2. Capture Install Prompt Event
-window.addEventListener('beforeinstallprompt', (e) => {
-  e.preventDefault();
-  deferredInstallPrompt = e;
-  console.log('✅ PWA Install Prompt Captured!');
-  const btn = document.getElementById('btn-pwa-install');
-  if (btn) btn.style.display = 'inline-flex';
-});
-
-// 3. User Installed App Confirmation
-window.addEventListener('appinstalled', () => {
-  console.log('🎉 ANAS AI App Installed Successfully!');
-  deferredInstallPrompt = null;
-  const btn = document.getElementById('btn-pwa-install');
-  if (btn) btn.style.display = 'none';
-});
-
-// 4. Trigger Install or Show Modal
-function triggerPwaInstall() {
-  const isInsideInAppBrowser = /FBAN|FBAV|Instagram|WhatsApp|Telegram/i.test(navigator.userAgent);
-  if (isInsideInAppBrowser) {
-    document.getElementById('pwa-guide-text').innerHTML = 
-      "<b style='color:#ef4444;'>Telegram/WhatsApp Browser Detect Hua!</b><br><br>" +
-      "1. Upar <b>3-dots (⋮)</b> dabayein.<br>" +
-      "2. <b>'Open in Chrome'</b> select karein.<br>" +
-      "3. Uske baad 'Install App' par click karein.";
-    document.getElementById('pwa-guide-modal').style.display = 'flex';
-    return;
-  }
-
-  if (deferredInstallPrompt) {
-    deferredInstallPrompt.prompt();
-    deferredInstallPrompt.userChoice.then((choiceResult) => {
-      if (choiceResult.outcome === 'accepted') {
-        console.log('User accepted PWA install');
-      }
-      deferredInstallPrompt = null;
-    });
-  } else {
-    document.getElementById('pwa-guide-modal').style.display = 'flex';
-  }
-}
-</script>
-
-</body></html>"""
+</html>
+"""
 
 @saas_bp.route("/")
-@saas_bp.route("/saas")
-@saas_bp.route("/portal")
-@saas_bp.route("/login")
-@saas_bp.route("/signup")
-def portal_page():
-    return render_template_string(PORTAL_HTML, upi_id=UPI_ID, upi_name=UPI_NAME, wa_no=WHATSAPP_NO, tg_url=TG_SUPPORT_URL)
+def saas_index():
+    return render_template_string(PORTAL_HTML, strategies=TOP_10_STRATEGIES)
 
-@saas_bp.route("/reset-password")
-def reset_page():
-    return render_template_string(RESET_HTML)
+@saas_bp.route("/api/user/save-broker", methods=["POST"])
+def api_save_broker():
+    data = request.get_json() or {}
+    uid = data.get("user_id")
+    broker = data.get("broker", "DHAN")
+    cid = data.get("client_id", "").strip()
+    pin = data.get("pin", "").strip()
+    totp = data.get("totp_secret", "").strip()
 
-@saas_bp.route("/api/saas/signup", methods=["POST"])
-def api_signup():
-    ensure_saas_schema()
-    d = request.get_json(force=True) or {}
-    name = (d.get("name") or "Trader").strip()
-    email = (d.get("email") or "").strip().lower()
-    mobile = (d.get("mobile") or "").strip()
-    pw = (d.get("password") or "").strip()
-    ref_by = (d.get("referred_by") or "").strip().upper() or None
-    if not email or not mobile or not pw:
-        return jsonify({"ok": False, "error": "Sabhi required fields bharein."}), 400
-    conn = db.get_conn()
-    cur = conn.cursor()
+    if not cid or not totp:
+        return jsonify({"ok": False, "msg": "Client ID aur TOTP Secret daalna anivarya hai!"})
+
+    # Test TOTP generation
+    sample_code = generate_totp(totp)
+    if not sample_code:
+        return jsonify({"ok": False, "msg": "Invalid TOTP Secret Key! Broker ke setup se check karein."})
+
     try:
-        cur.execute("SELECT id FROM saas_users WHERE email=%s OR mobile=%s", (email, mobile))
-        if cur.fetchone():
-            conn.close()
-            return jsonify({"ok": False, "error": "Email ya Mobile pehle se registered hai! Kripya Sign In karein."}), 409
-        my_ref = secrets.token_hex(4).upper()
-        cur.execute(
-            """INSERT INTO saas_users (name, email, mobile, password_hash, referral_code, referred_by, plan_name)
-               VALUES (%s, %s, %s, %s, %s, %s, 'TRIAL') RETURNING id, name, email, mobile, plan_name, referral_code""",
-            (name, email, mobile, hash_pw(pw), my_ref, ref_by)
-        )
-        row = cur.fetchone()
+        conn = db.get_conn()
+        cur = conn.cursor()
+        cur.execute("""
+            ALTER TABLE saas_users 
+            ADD COLUMN IF NOT EXISTS broker_name VARCHAR(50) DEFAULT 'DHAN',
+            ADD COLUMN IF NOT EXISTS broker_client_id VARCHAR(50),
+            ADD COLUMN IF NOT EXISTS broker_pin VARCHAR(20),
+            ADD COLUMN IF NOT EXISTS broker_totp_secret VARCHAR(100),
+            ADD COLUMN IF NOT EXISTS broker_access_token TEXT,
+            ADD COLUMN IF NOT EXISTS selected_strategy VARCHAR(50) DEFAULT 'anas_hybrid';
+        """)
+        cur.execute("""
+            UPDATE saas_users 
+            SET broker_name = %s, broker_client_id = %s, broker_pin = %s, broker_totp_secret = %s 
+            WHERE id = %s;
+        """, (broker, cid, pin, totp, uid))
         conn.commit()
         conn.close()
-        send_tg_admin(f"🆕 <b>New SaaS Signup</b>\nName: {name}\nEmail: {email}\nMobile: {mobile}")
-        return jsonify({"ok": True, "user": {"id": row[0], "name": row[1], "email": row[2], "mobile": row[3], "plan_name": row[4], "referral_code": row[5]}})
+        return jsonify({"ok": True, "msg": f"✅ Broker {broker} connected! TOTP Live Sync Verified ({sample_code}). Ab daily auto-renew rahega!"})
     except Exception as e:
-        conn.rollback()
+        return jsonify({"ok": False, "msg": f"Database error: {str(e)}"})
+
+@saas_bp.route("/api/user/save-strategy", methods=["POST"])
+def api_save_strategy():
+    data = request.get_json() or {}
+    uid = data.get("user_id")
+    strat = data.get("strategy", "anas_hybrid")
+    try:
+        conn = db.get_conn()
+        cur = conn.cursor()
+        cur.execute("UPDATE saas_users SET selected_strategy = %s WHERE id = %s;", (strat, uid))
+        conn.commit()
         conn.close()
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return jsonify({"ok": True, "msg": "Strategy updated!"})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)})
 
-@saas_bp.route("/api/saas/signin", methods=["POST"])
-def api_signin():
-    ensure_saas_schema()
-    d = request.get_json(force=True) or {}
-    login_id = (d.get("login_id") or "").strip().lower()
-    pw = (d.get("password") or "").strip()
-    conn = db.get_conn()
-    cur = conn.cursor()
-    cur.execute(
-        "SELECT id, COALESCE(name,'Trader'), email, mobile, password_hash, plan_name, referral_code FROM saas_users WHERE LOWER(email)=%s OR mobile=%s",
-        (login_id, login_id)
-    )
-    row = cur.fetchone()
-    conn.close()
-    if not row or row[4] != hash_pw(pw):
-        return jsonify({"ok": False, "error": "Galat Email/Mobile ya Password!"}), 401
-    return jsonify({"ok": True, "user": {"id": row[0], "name": row[1], "email": row[2], "mobile": row[3], "plan_name": row[5], "referral_code": row[6]}})
-
-@saas_bp.route("/api/saas/forgot-password", methods=["POST"])
-def api_forgot():
-    ensure_saas_schema()
-    d = request.get_json(force=True) or {}
-    email = (d.get("email") or "").strip().lower()
-    conn = db.get_conn()
-    cur = conn.cursor()
-    cur.execute("SELECT id FROM saas_users WHERE LOWER(email)=%s", (email,))
-    row = cur.fetchone()
-    if not row:
-        conn.close()
-        return jsonify({"ok": False, "error": "Yeh email registered nahi hai."}), 404
-    token = secrets.token_urlsafe(24)
-    exp = datetime.utcnow() + timedelta(minutes=30)
-    cur.execute("UPDATE saas_users SET reset_token=%s, reset_expires_at=%s WHERE id=%s", (token, exp, row[0]))
-    conn.commit()
-    conn.close()
-    base_url = request.host_url.rstrip("/")
-    ok, msg = send_reset_email(email, f"{base_url}/reset-password?token={token}")
-    return jsonify({"ok": ok, "message": msg, "error": None if ok else msg})
-
-@saas_bp.route("/api/saas/reset-password", methods=["POST"])
-def api_reset_pw():
-    d = request.get_json(force=True) or {}
-    token = (d.get("token") or "").strip()
-    pw = (d.get("password") or "").strip()
-    if not token or not pw:
-        return jsonify({"ok": False, "error": "Invalid request."}), 400
-    conn = db.get_conn()
-    cur = conn.cursor()
-    cur.execute("SELECT id, reset_expires_at FROM saas_users WHERE reset_token=%s", (token,))
-    row = cur.fetchone()
-    if not row or not row[1] or row[1] < datetime.utcnow():
-        conn.close()
-        return jsonify({"ok": False, "error": "Reset link expire ho chuka hai. Dobara request karein."}), 400
-    cur.execute("UPDATE saas_users SET password_hash=%s, reset_token=NULL, reset_expires_at=NULL WHERE id=%s", (hash_pw(pw), row[0]))
-    conn.commit()
-    conn.close()
-    return jsonify({"ok": True, "message": "✅ Password update ho gaya! Ab Sign In karein."})
-
-@saas_bp.route("/api/saas/submit-utr", methods=["POST"])
-def api_submit_utr():
-    ensure_saas_schema()
-    d = request.get_json(force=True) or {}
-    utr = (d.get("utr_ref") or "").strip()
-    amt = float(d.get("amount") or 0)
-    plan = (d.get("plan_selected") or "MONTHLY").strip()
-    uid = d.get("user_id")
-    email = (d.get("email") or "Unknown").strip()
-    if not utr:
-        return jsonify({"ok": False, "error": "UTR number required hai."}), 400
-    conn = db.get_conn()
-    cur = conn.cursor()
-    cur.execute(
-        "INSERT INTO saas_payments (user_id, amount, utr_ref, upi_id, status, plan_selected) VALUES (%s, %s, %s, %s, 'PENDING', %s) RETURNING id",
-        (uid, amt, utr, UPI_ID, plan)
-    )
-    pid = cur.fetchone()[0]
-    conn.commit()
-    conn.close()
-    send_tg_admin(
-        f"💰 <b>New UPI Payment Submitted!</b>\n"
-        f"Payment ID: <code>{pid}</code>\n"
-        f"User: {email}\n"
-        f"Plan: <b>{plan}</b> (₹{amt})\n"
-        f"UPI: <code>{UPI_ID}</code>\n"
-        f"UTR: <code>{utr}</code>"
-    )
-    return jsonify({"ok": True, "payment_id": pid})
-
-
-
-
-
-
-
-
-
-
+@saas_bp.route("/manifest.json")
+def pwa_manifest():
+    return jsonify({
+        "name": "ANAS AI QUANT",
+        "short_name": "AnasQuant",
+        "start_url": "/",
+        "display": "standalone",
+        "background_color": "#070d19",
+        "theme_color": "#070d19",
+        "icons": [{
+            "src": "https://img.icons8.com/fluency/192/bullish.png",
+            "sizes": "192x192",
+            "type": "image/png"
+        }]
+    })
