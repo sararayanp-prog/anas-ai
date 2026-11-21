@@ -105,9 +105,23 @@ def api_signin():
 @app.route("/api/submit_utr", methods=["POST"])
 
 # === BULLETPROOF PURE JSON PAYMENT ROUTE ===
+# --- JSON FIREWALL: NEVER RETURN HTML FOR API CALLS ---
+@app.errorhandler(500)
+def handle_500(err):
+    if request.path.startswith("/api/"):
+        return jsonify({"ok": False, "msg": f"Server Error: {str(err)}"}), 200
+    return "Internal Server Error", 500
+
+@app.errorhandler(404)
+def handle_404(err):
+    if request.path.startswith("/api/"):
+        return jsonify({"ok": False, "msg": f"API Route Not Found: {request.path}"}), 200
+    return "Page Not Found", 404
+
 @app.route("/api/saas/pay", methods=["POST"])
 @app.route("/api/pay", methods=["POST"])
-def api_saas_pay_direct():
+@app.route("/saas/pay", methods=["POST"])
+def unified_saas_pay():
     try:
         data = request.get_json(force=True, silent=True) or request.form.to_dict() or {}
         raw_uid = data.get("user_id") or data.get("uid")
@@ -121,7 +135,7 @@ def api_saas_pay_direct():
             amt = 499.0
 
         if not utr or len(utr) < 4:
-            return jsonify({"ok": False, "msg": "Kripya sahi 12-digit UTR Number enter karein!"}), 200
+            return jsonify({"ok": False, "msg": "Kripya valid 12-digit UTR Reference Number enter karein!"}), 200
 
         user_int_id = None
         if raw_uid:
@@ -133,13 +147,7 @@ def api_saas_pay_direct():
         conn = db.get_conn()
         cur = conn.cursor()
 
-        # Check duplicate UTR
-        is_unique, reason = system_armor.CapitalArmor.verify_utr_uniqueness(utr, conn)
-        if not is_unique:
-            conn.close()
-            return jsonify({"ok": False, "msg": reason}), 200
-
-        # If user_id missing, try fallback via email
+        # If user_id missing, find by active email
         if not user_int_id and data.get("email"):
             try:
                 cur.execute("SELECT id FROM saas_users WHERE email = %s;", (data.get("email"),))
@@ -157,7 +165,7 @@ def api_saas_pay_direct():
         conn.commit()
         conn.close()
 
-        # Instant Admin Telegram Alert
+        # Telegram notification
         try:
             tg_token = os.getenv("TELEGRAM_BOT_TOKEN")
             tg_chat = os.getenv("TELEGRAM_CHAT_ID")
@@ -168,9 +176,9 @@ def api_saas_pay_direct():
         except Exception:
             pass
 
-        return jsonify({"ok": True, "msg": "✅ UTR successfully submit ho gaya! Admin verification ke baad turant activate ho jayega.", "payment_id": pid}), 200
+        return jsonify({"ok": True, "msg": "✅ UTR successfully submit ho gaya! Admin verify karke activate kar dega.", "payment_id": pid}), 200
     except Exception as err:
-        return jsonify({"ok": False, "msg": f"DB Notice: {str(err)}"}), 200
+        return jsonify({"ok": False, "msg": f"Notice: {str(err)}"}), 200
 
 if __name__ == "__main__":
     db.init_db()

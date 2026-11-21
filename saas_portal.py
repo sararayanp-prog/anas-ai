@@ -276,7 +276,13 @@ async function doSignup(){
       method:"POST", headers:{"Content-Type":"application/json"},
       body: JSON.stringify({name, email, mobile, password, referred_by})
     });
-    const data = await res.json();
+    const txt = await res.text();
+      let data;
+      try { data = JSON.parse(txt); }
+      catch(e) {
+        showMsg("Server ready ho raha hai. Kripya 20 seconds baad dubara Submit dabayein.", "orange");
+        return;
+      }
     if(!data.ok) showMsg("authMsg", data.error || "Signup failed", true);
     else openPayPortal(data.user);
   }catch(e){ showMsg("authMsg", "Network error: "+e.message, true); }
@@ -294,7 +300,13 @@ async function doSignin(){
       method:"POST", headers:{"Content-Type":"application/json"},
       body: JSON.stringify({login_id, password})
     });
-    const data = await res.json();
+    const txt = await res.text();
+      let data;
+      try { data = JSON.parse(txt); }
+      catch(e) {
+        showMsg("Server ready ho raha hai. Kripya 20 seconds baad dubara Submit dabayein.", "orange");
+        return;
+      }
     if(!data.ok) showMsg("authMsg", data.error || "Invalid credentials", true);
     else openPayPortal(data.user);
   }catch(e){ showMsg("authMsg", "Network error: "+e.message, true); }
@@ -311,7 +323,13 @@ async function doForgot(){
       method:"POST", headers:{"Content-Type":"application/json"},
       body: JSON.stringify({email})
     });
-    const data = await res.json();
+    const txt = await res.text();
+      let data;
+      try { data = JSON.parse(txt); }
+      catch(e) {
+        showMsg("Server ready ho raha hai. Kripya 20 seconds baad dubara Submit dabayein.", "orange");
+        return;
+      }
     showMsg("authMsg", data.message || data.error, !data.ok);
   }catch(e){ showMsg("authMsg", "Network error: "+e.message, true); }
   btn.disabled = false; btn.innerText = "Send Reset Link to Email";
@@ -336,7 +354,13 @@ async function submitUTR(){
         utr_ref
       })
     });
-    const data = await res.json();
+    const txt = await res.text();
+      let data;
+      try { data = JSON.parse(txt); }
+      catch(e) {
+        showMsg("Server ready ho raha hai. Kripya 20 seconds baad dubara Submit dabayein.", "orange");
+        return;
+      }
     if(data.ok){
       showMsg("payMsg", "✅ UTR Submit ho gaya! Admin verification ke baad 5-10 min me plan activate ho jayega.", false);
       document.getElementById("utrInput").value = "";
