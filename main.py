@@ -1,3 +1,4 @@
+import system_armor
 import os
 import io
 import csv
@@ -120,7 +121,7 @@ def api_saas_pay_direct():
             amt = 499.0
 
         if not utr or len(utr) < 4:
-            return jsonify({"ok": False, "msg": "Kripya sahi UTR Reference Number enter karein!"}), 200
+            return jsonify({"ok": False, "msg": "Kripya sahi 12-digit UTR Number enter karein!"}), 200
 
         user_int_id = None
         if raw_uid:
@@ -131,17 +132,21 @@ def api_saas_pay_direct():
 
         conn = db.get_conn()
         cur = conn.cursor()
-        
-        # If user_id missing, find by current active session/email if present
-        if not user_int_id:
-            email = data.get("email")
-            if email:
-                try:
-                    cur.execute("SELECT id FROM saas_users WHERE email = %s;", (email,))
-                    r = cur.fetchone()
-                    if r: user_int_id = r[0]
-                except Exception:
-                    pass
+
+        # Check duplicate UTR
+        is_unique, reason = system_armor.CapitalArmor.verify_utr_uniqueness(utr, conn)
+        if not is_unique:
+            conn.close()
+            return jsonify({"ok": False, "msg": reason}), 200
+
+        # If user_id missing, try fallback via email
+        if not user_int_id and data.get("email"):
+            try:
+                cur.execute("SELECT id FROM saas_users WHERE email = %s;", (data.get("email"),))
+                r = cur.fetchone()
+                if r: user_int_id = r[0]
+            except Exception:
+                pass
 
         cur.execute("""
             INSERT INTO saas_payments (user_id, amount, utr, utr_ref, plan, plan_selected, upi_id, status)
@@ -152,7 +157,7 @@ def api_saas_pay_direct():
         conn.commit()
         conn.close()
 
-        # Telegram notification to Admin
+        # Instant Admin Telegram Alert
         try:
             tg_token = os.getenv("TELEGRAM_BOT_TOKEN")
             tg_chat = os.getenv("TELEGRAM_CHAT_ID")
@@ -163,9 +168,9 @@ def api_saas_pay_direct():
         except Exception:
             pass
 
-        return jsonify({"ok": True, "msg": "✅ UTR successfully submit ho gaya! Admin verify karke turant activate kar dega.", "payment_id": pid}), 200
+        return jsonify({"ok": True, "msg": "✅ UTR successfully submit ho gaya! Admin verification ke baad turant activate ho jayega.", "payment_id": pid}), 200
     except Exception as err:
-        return jsonify({"ok": False, "msg": f"Notice: {str(err)}"}), 200
+        return jsonify({"ok": False, "msg": f"DB Notice: {str(err)}"}), 200
 
 if __name__ == "__main__":
     db.init_db()
