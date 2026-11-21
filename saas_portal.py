@@ -145,7 +145,15 @@ PORTAL_HTML = """<!DOCTYPE html>
 </head>
 <body>
 <div class="card">
-  <div class="logo">⚡ ANAS AI QUANT</div>
+  
+    <div style="text-align:center;margin-bottom:12px;">
+      <svg width="60" height="60" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" style="filter:drop-shadow(0 0 12px #38bdf8);">
+        <circle cx="50" cy="50" r="45" stroke="#38bdf8" stroke-width="3" fill="#0b1120"/>
+        <path d="M30 65L50 25L70 65H58L50 45L42 65H30Z" fill="#38bdf8"/>
+        <polygon points="50,15 56,26 44,26" fill="#f59e0b"/>
+      </svg>
+    </div>
+<div class="logo">⚡ ANAS AI QUANT</div>
   <div class="sub">Institutional Grade NIFTY • BANKNIFTY • SENSEX Algo</div>
 
   <div id="authSection">
