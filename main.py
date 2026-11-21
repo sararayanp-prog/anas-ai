@@ -1,3 +1,4 @@
+import anas_cypher
 import system_armor
 import os
 import io
@@ -118,15 +119,20 @@ def handle_404(err):
         return jsonify({"ok": False, "msg": f"API Route Not Found: {request.path}"}), 200
     return "Page Not Found", 404
 
+# ==============================================================================
+# UNIVERSAL MULTI-USER PAYMENT ENGINE (Zero Hardcoding - Works for ALL Users)
+# ==============================================================================
 @app.route("/api/saas/pay", methods=["POST"])
 @app.route("/api/pay", methods=["POST"])
 @app.route("/saas/pay", methods=["POST"])
-def unified_saas_pay():
+def universal_saas_pay():
     try:
         data = request.get_json(force=True, silent=True) or request.form.to_dict() or {}
         raw_uid = data.get("user_id") or data.get("uid") or data.get("id")
-        email = str(data.get("email") or "eyeqom@gmail.com").strip()
-        plan = str(data.get("plan") or data.get("plan_selected") or "WEEKLY").strip()
+        email = str(data.get("email") or "").strip().lower()
+        mobile = str(data.get("mobile") or "").strip()
+        user_name = str(data.get("name") or "Trader").strip()
+        plan = str(data.get("plan") or data.get("plan_selected") or "WEEKLY").upper().strip()
         utr = str(data.get("utr") or data.get("utr_ref") or "").strip()
         upi = str(data.get("upi_id") or "Q57363994@ybl").strip()
         
@@ -136,48 +142,63 @@ def unified_saas_pay():
             amt = 499.0
 
         if not utr or len(utr) < 4:
-            return jsonify({"ok": False, "success": False, "msg": "Kripya valid UTR Reference Number enter karein!"}), 200
-
-        user_int_id = None
-        if raw_uid:
-            try:
-                user_int_id = int(raw_uid)
-            except Exception:
-                user_int_id = None
+            return jsonify({"ok": False, "success": False, "msg": "Kripya sahi UTR Reference Number enter karein!"}), 200
 
         conn = db.get_conn()
         cur = conn.cursor()
 
-        # If user_id missing, find by active email or latest user
-        if not user_int_id:
-            try:
-                cur.execute("SELECT id FROM saas_users WHERE email = %s;", (email,))
-                r = cur.fetchone()
-                if r:
-                    user_int_id = r[0]
-                else:
-                    cur.execute("SELECT id FROM saas_users ORDER BY id DESC LIMIT 1;")
-                    r2 = cur.fetchone()
-                    user_int_id = r2[0] if r2 else 1
-            except Exception:
-                user_int_id = 1
+        # 1. Anti-Fraud: Check if UTR is already approved for another user
+        cur.execute("SELECT id, user_email FROM saas_payments WHERE (utr = %s OR utr_ref = %s) AND status = 'COMPLETED';", (utr, utr))
+        dup = cur.fetchone()
+        if dup:
+            conn.close()
+            return jsonify({"ok": False, "success": False, "msg": "Yeh UTR pehle se verified aur activated hai. Duplicate submission allowed nahi hai!"}), 200
 
+        # 2. Resolve User ID Dynamically (No Hardcoding)
+        user_int_id = None
+        if raw_uid:
+            try: user_int_id = int(raw_uid)
+            except Exception: user_int_id = None
+
+        if not user_int_id and email:
+            cur.execute("SELECT id, name FROM saas_users WHERE LOWER(email) = %s;", (email,))
+            r = cur.fetchone()
+            if r:
+                user_int_id = r[0]
+                if r[1]: user_name = r[1]
+                
+        if not user_int_id and mobile:
+            cur.execute("SELECT id, name, email FROM saas_users WHERE mobile = %s;", (mobile,))
+            r = cur.fetchone()
+            if r:
+                user_int_id = r[0]
+                if r[1]: user_name = r[1]
+                if r[2]: email = r[2]
+
+        # 3. Insert Payment Record
         cur.execute("""
             INSERT INTO saas_payments (user_id, user_email, amount, utr, utr_ref, plan, plan_selected, upi_id, status)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'PENDING')
+            VALUES (%s, anas_cypher.encrypt_data(%s), %s, anas_cypher.encrypt_data(%s), anas_cypher.encrypt_data(%s), %s, %s, %s, 'PENDING')
             RETURNING id;
         """, (user_int_id, email, amt, utr, utr, plan, plan, upi))
         pid = cur.fetchone()[0]
         conn.commit()
         conn.close()
 
-        # Admin Telegram Alert
+        # 4. Instant Notification to Admin Telegram
         try:
             tg_token = os.getenv("TELEGRAM_BOT_TOKEN")
             tg_chat = os.getenv("TELEGRAM_CHAT_ID")
             if tg_token and tg_chat:
                 import requests
-                msg = f"💳 <b>Naya Payment UTR Submit!</b>\n\n• Payment ID: #{pid}\n• User: {email} (#{user_int_id})\n• Plan: {plan}\n• Amount: ₹{amt}\n• UTR: <code>{utr}</code>\n• UPI: {upi}"
+                cust_info = f"<b>{user_name}</b> ({email or mobile or 'User #' + str(user_int_id)})"
+                msg = f"💳 <b>Naya Subscription Payment Request!</b>\n\n" \
+                      f"• Payment ID: <code>#{pid}</code>\n" \
+                      f"• Customer: {cust_info}\n" \
+                      f"• Plan: <b>{plan}</b> (₹{amt})\n" \
+                      f"• UTR: <code>{utr}</code>\n" \
+                      f"• Merchant UPI: {upi}\n\n" \
+                      f"Approve karne ke liye Telegram bot me <code>/approve_{pid}</code> bhejein."
                 requests.post(f"https://api.telegram.org/bot{tg_token}/sendMessage", json={"chat_id": tg_chat, "text": msg, "parse_mode": "HTML"}, timeout=4)
         except Exception:
             pass
@@ -186,12 +207,46 @@ def unified_saas_pay():
             "ok": True,
             "success": True,
             "status": "success",
-            "msg": "✅ UTR successfully submit ho gaya! Admin verify karke activate kar dega.",
+            "msg": "✅ UTR successfully submit ho gaya! Admin verification ke baad aapka account activate ho jayega.",
             "message": "✅ UTR successfully submit ho gaya!",
             "payment_id": pid
         }), 200
     except Exception as err:
         return jsonify({"ok": False, "success": False, "msg": f"Notice: {str(err)}"}), 200
+
+# Telegram 1-Click Approve Webhook Handler
+@app.route("/api/saas/approve", methods=["GET", "POST"])
+def api_saas_approve():
+    try:
+        pid = request.args.get("pid") or (request.json or {}).get("pid")
+        if not pid:
+            return jsonify({"ok": False, "msg": "Payment ID zaroori hai"}), 200
+            
+        conn = db.get_conn()
+        cur = conn.cursor()
+        cur.execute("SELECT id, user_id, plan, amount FROM saas_payments WHERE id = %s;", (pid,))
+        p = cur.fetchone()
+        if not p:
+            conn.close()
+            return jsonify({"ok": False, "msg": "Payment not found"}), 200
+            
+        p_id, uid, plan_name, p_amt = p
+        
+        # Calculate duration based on plan
+        days = 7
+        if "MONTH" in plan_name: days = 30
+        elif "QUART" in plan_name: days = 90
+        elif "YEAR" in plan_name: days = 365
+        
+        cur.execute("UPDATE saas_payments SET status = 'COMPLETED' WHERE id = %s;", (p_id,))
+        if uid:
+            cur.execute(f"UPDATE saas_users SET plan_name = %s, plan_expires_at = NOW() + INTERVAL '{days} days' WHERE id = %s;", (plan_name, uid))
+            
+        conn.commit()
+        conn.close()
+        return jsonify({"ok": True, "msg": f"Payment #{pid} Approved & Plan Activated for {days} Days!"}), 200
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)}), 200
 
 if __name__ == "__main__":
     db.init_db()

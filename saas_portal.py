@@ -274,7 +274,7 @@ async function doSignup(){
   try{
     const res = await fetch("/api/saas/signup", {
       method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({name, email, mobile, password, referred_by})
+      body: JSON.stringify(payload)
     });
     const txt = await res.text();
       let data;
@@ -298,7 +298,7 @@ async function doSignin(){
   try{
     const res = await fetch("/api/saas/signin", {
       method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({login_id, password})
+      body: JSON.stringify(payload)
     });
     const txt = await res.text();
       let data;
@@ -321,7 +321,7 @@ async function doForgot(){
   try{
     const res = await fetch("/api/saas/forgot-password", {
       method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({email})
+      body: JSON.stringify(payload)
     });
     const txt = await res.text();
       let data;
@@ -336,6 +336,19 @@ async function doForgot(){
 }
 
 async function submitUTR(){
+
+      const curUser = (typeof currentUser !== 'undefined' && currentUser) ? currentUser : JSON.parse(localStorage.getItem('user') || '{}');
+      const payload = {
+        user_id: curUser.id || null,
+        email: curUser.email || '',
+        name: curUser.name || 'Trader',
+        mobile: curUser.mobile || '',
+        plan: (typeof selectedPlan !== 'undefined') ? selectedPlan : 'WEEKLY',
+        amount: (typeof selectedAmount !== 'undefined') ? selectedAmount : 499,
+        utr: utrVal,
+        upi_id: 'Q57363994@ybl'
+      };
+    
   const utr_ref = document.getElementById("utrInput").value.trim();
   if(!utr_ref || utr_ref.length < 6){
     return showMsg("payMsg", "Kripya sahi 12-digit UTR / Ref number daalein.", true);
@@ -346,13 +359,7 @@ async function submitUTR(){
   try{
     const res = await fetch("/api/saas/submit-utr", {
       method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({
-        user_id: currentUser ? currentUser.id : null,
-        email: currentUser ? currentUser.email : "",
-        amount: parseFloat(amt),
-        plan_selected,
-        utr_ref
-      })
+      body: JSON.stringify(payload)
     });
     const txt = await res.text();
       let data;
@@ -401,7 +408,7 @@ async function resetPw(){
   const token = new URLSearchParams(window.location.search).get("token");
   const res = await fetch("/api/saas/reset-password", {
     method:"POST", headers:{"Content-Type":"application/json"},
-    body: JSON.stringify({token, password: p1})
+    body: JSON.stringify(payload)
   });
   const d = await res.json();
   document.getElementById("rmsg").innerText = d.message || d.error;
