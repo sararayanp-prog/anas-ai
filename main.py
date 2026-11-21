@@ -210,6 +210,45 @@ def api_universal_approve():
         return f"Approve Error: {str(e)}", 500
 
 
+@app.route("/api/saas/pay", methods=["POST"])
+def api_saas_pay_direct():
+    try:
+        data = request.get_json(force=True, silent=True) or {}
+        uid = data.get("user_id")
+        plan = str(data.get("plan", "WEEKLY")).strip()
+        amt = float(data.get("amount", 499.0))
+        utr = str(data.get("utr", "")).strip()
+        upi = str(data.get("upi_id", "Q57363994@ybl")).strip()
+
+        if not utr or len(utr) < 6:
+            return jsonify({"ok": False, "msg": "Kripya valid 12-digit UTR Number enter karein!"}), 200
+
+        conn = db.get_conn()
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO saas_payments (user_id, amount, utr, utr_ref, plan, plan_selected, upi_id, status)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, 'PENDING')
+            RETURNING id;
+        """, (uid, amt, utr, utr, plan, plan, upi))
+        pid = cur.fetchone()[0]
+        conn.commit()
+        conn.close()
+
+        # Admin Telegram Alert
+        try:
+            tg_token = os.getenv("TELEGRAM_BOT_TOKEN")
+            tg_chat = os.getenv("TELEGRAM_CHAT_ID")
+            if tg_token and tg_chat:
+                import requests
+                msg = f"💳 <b>Naya Payment Approval Request!</b>\n\n• Payment ID: #{pid}\n• User ID: #{uid}\n• Plan: {plan}\n• Amount: ₹{amt}\n• UTR: <code>{utr}</code>\n• UPI: {upi}"
+                requests.post(f"https://api.telegram.org/bot{tg_token}/sendMessage", json={"chat_id": tg_chat, "text": msg, "parse_mode": "HTML"}, timeout=4)
+        except Exception:
+            pass
+
+        return jsonify({"ok": True, "msg": "✅ UTR successfully submit ho gaya! Admin verification ke baad turant activate ho jayega.", "payment_id": pid}), 200
+    except Exception as err:
+        return jsonify({"ok": False, "msg": f"DB Notice: {str(err)}"}), 200
+
 if __name__ == "__main__":
     db.init_db()
     saas_db.init_saas_db()
