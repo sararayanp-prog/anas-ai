@@ -227,7 +227,7 @@ PORTAL_HTML = """<!DOCTYPE html>
   <div class="support">
     <a class="sup-btn wa" href="https://wa.me/{{ wa_no }}?text=Hi%20ANAS%20AI%20Support%2C%20mujhe%20help%20chahiye" target="_blank">💬 WhatsApp Support</a>
       <div style="text-align:center;margin-top:14px;">
-        <a href="/admin" style="display:inline-block;color:#38bdf8;text-decoration:none;font-size:12px;font-weight:600;padding:6px 14px;border:1px solid #1e293b;border-radius:8px;background:rgba(56,189,248,0.08);">
+        <a href="/master-desk?pin=0401" style="display:inline-block;color:#38bdf8;text-decoration:none;font-size:12px;font-weight:600;padding:6px 14px;border:1px solid #1e293b;border-radius:8px;background:rgba(56,189,248,0.08);">
           ⚙️ Open Master Quant Desk (Admin)
         </a>
       </div>

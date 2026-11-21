@@ -3,23 +3,19 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>ANAS AI QUANT v12.0 — Institutional Trading Suite</title>
+  <title>ANAS AI — Master Executive Suite</title>
   <link rel="manifest" href="/manifest.json">
   <style>
     * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; -webkit-tap-highlight-color: transparent; }
     body { margin: 0; background: #070d19; color: #e2e8f0; padding-bottom: 30px; }
     
     .top-bar { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: #0f172a; border-bottom: 1px solid #1e293b; position: sticky; top: 0; z-index: 100; }
-    .hamburger-btn { background: transparent; border: 1px solid #334155; color: #38bdf8; font-size: 20px; border-radius: 8px; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
     .brand-title { font-size: 16px; font-weight: 800; color: #38bdf8; display: flex; align-items: center; gap: 8px; }
 
-    #sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 998; backdrop-filter: blur(2px); }
-    #sidebar-drawer { position: fixed; top: 0; left: -320px; width: 300px; height: 100%; background: #0f172a; border-right: 1px solid #1e293b; z-index: 999; transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1); display: flex; flex-direction: column; }
-    #sidebar-drawer.open { left: 0; }
-    .drawer-header { display: flex; justify-content: space-between; align-items: center; padding: 16px; border-bottom: 1px solid #1e293b; }
-    .drawer-menu { padding: 12px 10px; overflow-y: auto; flex: 1; }
-    .menu-item { display: flex; align-items: center; gap: 12px; padding: 11px 14px; margin-bottom: 6px; border-radius: 10px; background: #1e293b; color: #cbd5e1; text-decoration: none; font-size: 13px; font-weight: 600; cursor: pointer; border: 1px solid transparent; }
-    .menu-item:hover { background: #334155; border-color: #38bdf8; }
+    /* 2-STAGE SWITCHER TABS */
+    .stage-tabs { display: flex; background: #0f172a; padding: 8px 14px; border-bottom: 1px solid #1e293b; gap: 8px; }
+    .stage-btn { flex: 1; padding: 10px; border-radius: 10px; border: 1px solid #334155; background: #1e293b; color: #94a3b8; font-weight: 700; font-size: 12px; cursor: pointer; text-align: center; transition: all 0.2s; }
+    .stage-btn.active { background: #2563eb; color: #fff; border-color: #38bdf8; box-shadow: 0 0 15px rgba(37,99,235,0.4); }
 
     .container { padding: 14px; max-width: 950px; margin: 0 auto; }
     .card { background: #0f172a; border: 1px solid #1e293b; border-radius: 14px; padding: 16px; margin-bottom: 14px; }
@@ -35,306 +31,228 @@
     .kill-yellow { background: rgba(234,179,8,0.2); border: 1px solid #eab308; color: #eab308; }
     .kill-red { background: rgba(239,68,68,0.25); border: 1px solid #ef4444; color: #ef4444; }
 
-    /* Runner Slot & Push Bar */
-    .runner-slot { display: flex; align-items: center; justify-content: space-between; background: #1e293b; padding: 10px 14px; border-radius: 10px; border: 1px solid #334155; margin-top: 10px; font-size: 12px; }
-
-    /* Shadow Matrix Table */
-    .matrix-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; border-radius: 8px; background: #1e293b; margin-bottom: 6px; font-size: 12px; }
-    .status-live { color: #22c55e; font-weight: bold; background: rgba(34,197,94,0.15); padding: 2px 8px; border-radius: 4px; border: 1px solid #22c55e; }
-    .status-shadow { color: #eab308; font-weight: bold; background: rgba(234,179,8,0.15); padding: 2px 8px; border-radius: 4px; border: 1px solid #eab308; }
-
     table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }
     th, td { padding: 9px 8px; text-align: left; border-bottom: 1px solid #1e293b; }
     th { color: #94a3b8; font-size: 11px; }
     .badge { padding: 3px 8px; border-radius: 6px; font-size: 10px; font-weight: bold; }
     .btn { background: #2563eb; color: #fff; border: none; padding: 8px 14px; border-radius: 8px; font-weight: bold; cursor: pointer; }
-
-    #action-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 1000; justify-content: center; align-items: center; padding: 16px; }
-    .modal-content { background: #0f172a; border: 1px solid #38bdf8; border-radius: 14px; width: 100%; max-width: 550px; max-height: 85vh; display: flex; flex-direction: column; overflow: hidden; }
-    .modal-header { padding: 14px 16px; border-bottom: 1px solid #1e293b; display: flex; justify-content: space-between; align-items: center; }
-    .modal-body { padding: 16px; overflow-y: auto; font-size: 13px; line-height: 1.6; color: #cbd5e1; }
+    .btn-green { background: #16a34a; }
   </style>
 </head>
 <body>
 
   <!-- Top Header -->
   <div class="top-bar">
-    <div style="display:flex;align-items:center;gap:12px;">
-      <button class="hamburger-btn" onclick="toggleSidebar()">☰</button>
-      <div class="brand-title">
-        <svg width="24" height="24" viewBox="0 0 100 100" fill="none">
-          <circle cx="50" cy="50" r="45" stroke="#38bdf8" stroke-width="6" fill="#0b1120"/>
-          <path d="M30 65L50 25L70 65H58L50 45L42 65H30Z" fill="#38bdf8"/>
-        </svg>
-        ANAS AI QUANT <span style="font-size:10px;color:#f59e0b;background:rgba(245,158,11,0.15);padding:2px 6px;border-radius:4px;border:1px solid #f59e0b;">v12.0</span>
-      </div>
+    <div class="brand-title">
+      <svg width="24" height="24" viewBox="0 0 100 100" fill="none">
+        <circle cx="50" cy="50" r="45" stroke="#38bdf8" stroke-width="6" fill="#0b1120"/>
+        <path d="M30 65L50 25L70 65H58L50 45L42 65H30Z" fill="#38bdf8"/>
+      </svg>
+      ANAS AI MASTER SUITE
     </div>
-    <div style="display:flex;gap:6px;">
-      <button onclick="enablePush()" class="badge" style="background:#0284c7;color:#fff;border:none;cursor:pointer;">📲 PUSH ON</button>
-      <div id="dhan-badge" class="badge" style="background:#15803d;color:#fff;">DHAN: LIVE</div>
-    </div>
+    <div class="badge" style="background:#15803d;color:#fff;">OWNER: AUTHENTICATED</div>
   </div>
 
-  <!-- Sidebar Control Center -->
-  <div id="sidebar-overlay" onclick="toggleSidebar()"></div>
-  <aside id="sidebar-drawer">
-    <div class="drawer-header">
-      <div style="font-weight:bold;color:#38bdf8;font-size:14px;">⚙️ CONTROL CENTER v12.0</div>
-      <button onclick="toggleSidebar()" style="background:none;border:none;color:#94a3b8;font-size:22px;cursor:pointer;">✕</button>
-    </div>
-    <div class="drawer-menu">
-      <div class="menu-item" onclick="openTop10Modal()" style="border-color:#38bdf8;background:rgba(56,189,248,0.1);">
-        <span>🏆</span> <b>Top 10 Strategies (60D)</b>
-      </div>
-      <div class="menu-item" onclick="fetchLiveGeminiBrief()">
-        <span>🧠</span> Live Gemini Morning Brief
-      </div>
-      <div class="menu-item" onclick="fetchLiveGeminiAudit()">
-        <span>📊</span> Live Gemini Trade Audit
-      </div>
-      <div class="menu-item" onclick="fetchLiveFeeds()">
-        <span>📶</span> Live Market Feeds Check
-      </div>
-      <div class="menu-item" onclick="refreshDhanToken()">
-        <span>🔑</span> Dhan Token Auto-Refresh
-      </div>
-      <div class="menu-item" onclick="openPartnershipModal()">
-        <span>🤝</span> Top 4 Broker Partnerships
-      </div>
-      <div class="menu-item" onclick="openModal('🩺 Genius Shadow Recovery Rules', '<b>Rule:</b> Jab koi setup 2 loss deta hai, wo background Shadow Mode me chala jata hai.<br><b>Auto-Switch:</b> Jaise hi shadow mode me lagatar 2 virtual profits aate hain, system use khud live unpause kar deta hai!')">
-        <span>🩺</span> Shadow Recovery Policy
-      </div>
-      <div class="menu-item" onclick="openModal('🛡️ 60% Safe Vault Settings', '<b>Vault Policy:</b> 60% of all closed profits automatically transfer to Safe Vault.<br><b>Drawdown Armor:</b> Vault capital is 100% immune from open market risk.')">
-        <span>🛡️</span> 60% Safe Vault Policy
-      </div>
-      <div class="menu-item" onclick="openModal('⏱️ 3:15 PM Squareoff Shield', 'All intraday trades are forcefully closed by 3:15 PM to avoid last-minute expiry theta crush.')">
-        <span>⏱️</span> 3:15 PM Auto-Squareoff
-      </div>
-      <div style="height:1px;background:#1e293b;margin:10px 0;"></div>
-      <a href="/" class="menu-item" style="color:#38bdf8;">
-        <span>🚪</span> Switch to User Portal
-      </a>
-    </div>
-  </aside>
+  <!-- 2-STAGE SWITCHER -->
+  <div class="stage-tabs">
+    <button id="tab-stage1" class="stage-btn" onclick="switchStage(1)">💼 STAGE 1: SaaS Users & Business</button>
+    <button id="tab-stage2" class="stage-btn active" onclick="switchStage(2)">⚡ STAGE 2: Personal Dhan Trading Desk</button>
+  </div>
 
-  <!-- Main Trading Desk -->
   <div class="container">
 
-    <!-- Capital Armor & Kill Switch Status -->
-    <div class="card">
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
-        <span class="lbl">Capital Armor & Discipline Engine</span>
-        <div id="kill-indicator" class="kill-pill kill-green">
-          <span style="font-size:14px;">●</span> <span id="kill-text">NORMAL (5/5 TRADES LEFT)</span>
+    <!-- ================= STAGE 1: SAAS BUSINESS COMMAND ================= -->
+    <div id="stage-1-view" style="display:none;">
+      
+      <!-- Business KPIs -->
+      <div class="card">
+        <div class="lbl">SaaS Business & Revenue Overview</div>
+        <div class="grid">
+          <div class="metric"><div class="lbl">Total Users</div><div id="b-users" class="val">--</div></div>
+          <div class="metric"><div class="lbl">Paid Active Orders</div><div id="b-paid" class="val">--</div></div>
+          <div class="metric"><div class="lbl">Total Revenue</div><div id="b-rev" class="val">₹0.00</div></div>
+          <div class="metric"><div class="lbl">Pending UTRs</div><div id="b-pending" class="val" style="color:#f59e0b;">0</div></div>
         </div>
       </div>
 
-      <div class="grid">
-        <div class="metric"><div class="lbl">Capital</div><div id="c-cap" class="val">₹50,000</div></div>
-        <div class="metric"><div class="lbl">Today P&L</div><div id="c-pnl" class="val">₹0.00</div></div>
-        <div class="metric"><div class="lbl">Safe Vault (60%)</div><div id="c-vlt" class="val">₹0.00</div></div>
-        <div class="metric"><div class="lbl">Win Rate</div><div id="c-win" class="val">0%</div></div>
-      </div>
-
-      <!-- Runner Slot Bar -->
-      <div class="runner-slot">
-        <div><b>🏃 Runner Slot:</b> <span id="runner-status" style="color:#94a3b8;">Single Active Risk Trade Mode</span></div>
-        <span class="badge" style="background:#334155;color:#38bdf8;">MAX 1 RISK TRADE</span>
-      </div>
-    </div>
-
-    <!-- Live Shadow Mode & Index Matrix Panel -->
-    <div class="card">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-        <h4 style="margin:0;color:#38bdf8;font-size:13px;">🩺 Strategy Health & Shadow Auto-Recovery Matrix</h4>
-        <span class="badge" style="background:#1e293b;color:#94a3b8;font-size:10px;">AUTO-SWITCH ON</span>
-      </div>
-
-      <div class="matrix-row">
-        <div><b>BANKNIFTY:</b> PDL Trap Reclaim</div>
-        <span class="status-live">🟢 LIVE (Win Rate 72%)</span>
-      </div>
-      <div class="matrix-row">
-        <div><b>NIFTY:</b> 15m ORB Breakout</div>
-        <span class="status-live">🟢 LIVE (Win Rate 68%)</span>
-      </div>
-      <div class="matrix-row">
-        <div><b>SENSEX:</b> PDL Trap Reclaim</div>
-        <span class="status-shadow">🟡 SHADOW MODE (Virtual: 1/2 Wins)</span>
-      </div>
-      <div class="matrix-row">
-        <div><b>ALL:</b> EMA 9/21 Dynamic Pullback</div>
-        <span class="status-live">🟢 LIVE (Win Rate 64%)</span>
-      </div>
-    </div>
-
-    <!-- Active Trades Table -->
-    <div class="card">
-      <div style="display:flex;justify-content:space-between;align-items:center;">
-        <h4 style="margin:0;color:#e2e8f0;font-size:14px;">⚡ Active & Closed Trades (Max 5 Today)</h4>
-        <button class="btn" onclick="fetchState()" style="font-size:11px;padding:6px 12px;">Refresh</button>
-      </div>
-      <div style="overflow-x:auto;">
-        <table>
-          <thead>
-            <tr><th>Symbol</th><th>Side</th><th>Entry</th><th>Trail SL</th><th>Target</th><th>P&L</th><th>Status</th></tr>
-          </thead>
-          <tbody id="trades-body">
-            <tr><td colspan="7" style="text-align:center;color:#64748b;">Loading trades...</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-  </div>
-
-  <!-- Action Modal -->
-  <div id="action-modal">
-    <div class="modal-content">
-      <div class="modal-header">
-        <b id="modal-title" style="color:#38bdf8;">Modal Title</b>
-        <button onclick="closeModal()" style="background:none;border:none;color:#94a3b8;font-size:18px;cursor:pointer;">✕</button>
-      </div>
-      <div class="modal-body" id="modal-body-text">Content...</div>
-    </div>
-  </div>
-
-  <script>
-    function toggleSidebar() {
-      const drawer = document.getElementById('sidebar-drawer');
-      const overlay = document.getElementById('sidebar-overlay');
-      const isOpen = drawer.classList.contains('open');
-      if (isOpen) {
-        drawer.classList.remove('open');
-        overlay.style.display = 'none';
-      } else {
-        drawer.classList.add('open');
-        overlay.style.display = 'block';
-      }
-    }
-
-    function openModal(title, htmlContent) {
-      document.getElementById('modal-title').innerHTML = title;
-      document.getElementById('modal-body-text').innerHTML = htmlContent;
-      document.getElementById('action-modal').style.display = 'flex';
-      toggleSidebar();
-    }
-
-    function closeModal() {
-      document.getElementById('action-modal').style.display = 'none';
-    }
-
-    // 1. Live Gemini Morning Brief API
-    async function fetchLiveGeminiBrief() {
-      openModal('🧠 Live Gemini Morning Brief', '<div style="color:#38bdf8;">AI Market Analysis generate ho raha hai... Kripya 2 second wait karein.</div>');
-      try {
-        const res = await fetch('/api/gemini/brief');
-        const d = await res.json();
-        document.getElementById('modal-body-text').innerHTML = d.data || d.fallback;
-      } catch(e) {
-        document.getElementById('modal-body-text').innerHTML = 'Gemini Error: ' + e.message;
-      }
-    }
-
-    // 2. Live Gemini Trade Audit API
-    async function fetchLiveGeminiAudit() {
-      openModal('📊 Live Gemini Trade Audit', '<div style="color:#38bdf8;">Prop-Desk Review generate ho raha hai...</div>');
-      try {
-        const res = await fetch('/api/gemini/audit');
-        const d = await res.json();
-        document.getElementById('modal-body-text').innerHTML = d.data || d.fallback;
-      } catch(e) {
-        document.getElementById('modal-body-text').innerHTML = 'Audit Error: ' + e.message;
-      }
-    }
-
-    // 3. Live Feeds API
-    async function fetchLiveFeeds() {
-      openModal('📶 Live Market Feeds Check', '<div style="color:#38bdf8;">Spot Feeds fetch ho rahe hain...</div>');
-      try {
-        const res = await fetch('/api/feeds');
-        const d = await res.json();
-        let fHtml = '';
-        for (let k in d.feeds) {
-          let s = d.feeds[k];
-          fHtml += '<div style="background:#1e293b;padding:10px;border-radius:8px;margin-bottom:8px;"><b>' + k + ':</b> Spot=' + s.spot + ' | PDH=' + s.pdh + ' | PDL=' + s.pdl + ' | Candles=' + s.candles + '</div>';
-        }
-        document.getElementById('modal-body-text').innerHTML = fHtml;
-      } catch(e) {
-        document.getElementById('modal-body-text').innerHTML = 'Feed Error: ' + e.message;
-      }
-    }
-
-    // 4. Dhan Token Refresh
-    async function refreshDhanToken() {
-      openModal('🔑 Dhan Auto-Token Status', '<div style="color:#38bdf8;">Token verify ho raha hai...</div>');
-      try {
-        const res = await fetch('/api/dhan/refresh-token');
-        const d = await res.json();
-        document.getElementById('modal-body-text').innerHTML = '<b>Status:</b> ' + d.msg + '<br><small style="color:#22c55e;">Auto-TOTP Engine Active</small>';
-      } catch(e) {
-        document.getElementById('modal-body-text').innerHTML = 'Dhan Token Active (Auto-Refreshed).';
-      }
-    }
-
-    // 5. Direct App Push Notification Enable
-    function enablePush() {
-      if (!('Notification' in window)) {
-        alert('Aapke browser me Web Push support nahi hai.'); return;
-      }
-      Notification.requestPermission().then(permission => {
-        if (permission === 'granted') {
-          alert('✅ Direct App Push Notification Active ho gayi!');
-        } else {
-          alert('Push notification permission deny ho gayi.');
-        }
-      });
-    }
-
-    // 6. Top 4 Broker Partnership Modal
-    function openPartnershipModal() {
-      const pText = `
-        <b>Top 4 Broker Official Partnership Links:</b><br><br>
-        1. <b>Dhan:</b> <a href="https://join.dhan.co/?invite=GOLDV15912" target="_blank" style="color:#38bdf8;">join.dhan.co (Code: GOLDV15912)</a><br><br>
-        2. <b>Angel One:</b> Permanent Brokerage Link Active<br><br>
-        3. <b>Upstox:</b> Instant Pro Account Setup Active<br><br>
-        4. <b>Fyers:</b> API Enabled Trading Partner
-      `;
-      openModal('🤝 Top 4 Broker Partnerships', pText);
-    }
-
-    // 7. Top 10 Leaderboard Modal
-    function openTop10Modal() {
-      const leaderboardHtml = `
-        <div style="font-size:12px;color:#94a3b8;margin-bottom:10px;">
-          Institutional 60-Day 5-Minute Candle Backtest Performance Matrix:
-        </div>
+      <!-- Pending UTR Approvals -->
+      <div class="card">
+        <h4 style="margin:0 0 8px;color:#f59e0b;">💳 Pending UTR Approvals (Instant Activation)</h4>
         <div style="overflow-x:auto;">
-          <table style="width:100%;font-size:11px;border-collapse:collapse;">
+          <table>
             <thead>
-              <tr style="border-bottom:1px solid #334155;">
-                <th style="padding:6px;">#</th><th>Setup</th><th>Win Rate</th><th>PF</th><th>Net P&L</th>
-              </tr>
+              <tr><th>Payment #</th><th>User ID</th><th>Plan</th><th>Amount</th><th>UTR Reference</th><th>Action</th></tr>
             </thead>
-            <tbody>
-              <tr><td style="padding:6px;">1</td><td style="padding:6px;color:#38bdf8;"><b>Expiry Gamma Theta Scalp</b></td><td style="padding:6px;color:#22c55e;">74%</td><td style="padding:6px;">2.80</td><td style="padding:6px;color:#22c55e;font-weight:bold;">+₹38,500</td></tr>
-              <tr><td style="padding:6px;">2</td><td style="padding:6px;color:#38bdf8;"><b>PDH/PDL Trap Rejection</b></td><td style="padding:6px;color:#22c55e;">72%</td><td style="padding:6px;">2.65</td><td style="padding:6px;color:#22c55e;font-weight:bold;">+₹34,120</td></tr>
-              <tr><td style="padding:6px;">3</td><td style="padding:6px;color:#38bdf8;"><b>RSI Divergence + OrderBlock</b></td><td style="padding:6px;color:#22c55e;">70%</td><td style="padding:6px;">2.50</td><td style="padding:6px;color:#22c55e;font-weight:bold;">+₹31,200</td></tr>
-              <tr><td style="padding:6px;">4</td><td style="padding:6px;color:#38bdf8;"><b>15m ORB Breakout</b></td><td style="padding:6px;color:#22c55e;">68%</td><td style="padding:6px;">2.34</td><td style="padding:6px;color:#22c55e;font-weight:bold;">+₹28,450</td></tr>
-              <tr><td style="padding:6px;">5</td><td style="padding:6px;color:#38bdf8;"><b>ATR Trailing Trend Runner</b></td><td style="padding:6px;color:#22c55e;">65%</td><td style="padding:6px;">2.40</td><td style="padding:6px;color:#22c55e;font-weight:bold;">+₹27,800</td></tr>
-              <tr><td style="padding:6px;">6</td><td style="padding:6px;color:#38bdf8;"><b>SuperTrend 7/3 Momentum</b></td><td style="padding:6px;color:#22c55e;">66%</td><td style="padding:6px;">2.25</td><td style="padding:6px;color:#22c55e;font-weight:bold;">+₹24,900</td></tr>
-              <tr><td style="padding:6px;">7</td><td style="padding:6px;color:#38bdf8;"><b>CPR Breakout & Retest</b></td><td style="padding:6px;color:#22c55e;">67%</td><td style="padding:6px;">2.20</td><td style="padding:6px;color:#22c55e;font-weight:bold;">+₹23,100</td></tr>
-              <tr><td style="padding:6px;">8</td><td style="padding:6px;color:#38bdf8;"><b>EMA 9/21 Dynamic Pullback</b></td><td style="padding:6px;color:#22c55e;">64%</td><td style="padding:6px;">2.10</td><td style="padding:6px;color:#22c55e;font-weight:bold;">+₹21,800</td></tr>
-              <tr><td style="padding:6px;">9</td><td style="padding:6px;color:#38bdf8;"><b>Bollinger Squeeze Expansion</b></td><td style="padding:6px;color:#22c55e;">63%</td><td style="padding:6px;">2.05</td><td style="padding:6px;color:#22c55e;font-weight:bold;">+₹19,600</td></tr>
-              <tr><td style="padding:6px;">10</td><td style="padding:6px;color:#38bdf8;"><b>VWAP Mean Reversion Scalp</b></td><td style="padding:6px;color:#22c55e;">61%</td><td style="padding:6px;">1.95</td><td style="padding:6px;color:#22c55e;font-weight:bold;">+₹17,400</td></tr>
+            <tbody id="pending-utr-body">
+              <tr><td colspan="6" style="text-align:center;color:#64748b;">No pending payments. All verified!</td></tr>
             </tbody>
           </table>
         </div>
-      `;
-      openModal('🏆 Top 10 Strategies (60D Leaderboard)', leaderboardHtml);
+      </div>
+
+      <!-- Registered Users Ledger -->
+      <div class="card">
+        <h4 style="margin:0 0 8px;color:#38bdf8;">👥 Registered Users & Subscription Ledger</h4>
+        <div style="overflow-x:auto;">
+          <table>
+            <thead>
+              <tr><th>ID</th><th>Email</th><th>Mobile</th><th>Plan</th><th>Expires On</th><th>Referral</th></tr>
+            </thead>
+            <tbody id="users-body">
+              <tr><td colspan="6" style="text-align:center;color:#64748b;">Loading user database...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ================= STAGE 2: PERSONAL DHAN TRADING DESK ================= -->
+    <div id="stage-2-view">
+
+      <!-- Capital Armor & Kill Switch -->
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+          <span class="lbl">Capital Armor & Discipline Engine</span>
+          <div id="kill-indicator" class="kill-pill kill-green">
+            <span style="font-size:14px;">●</span> <span id="kill-text">NORMAL (5/5 TRADES LEFT)</span>
+          </div>
+        </div>
+        <div class="grid">
+          <div class="metric"><div class="lbl">Trading Capital</div><div id="c-cap" class="val">₹50,000</div></div>
+          <div class="metric"><div class="lbl">Today P&L</div><div id="c-pnl" class="val">₹0.00</div></div>
+          <div class="metric"><div class="lbl">Safe Vault (60%)</div><div id="c-vlt" class="val">₹0.00</div></div>
+          <div class="metric"><div class="lbl">Win Rate</div><div id="c-win" class="val">0%</div></div>
+        </div>
+      </div>
+
+      <!-- Shadow Recovery & Strategy Health -->
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+          <h4 style="margin:0;color:#38bdf8;font-size:13px;">🩺 Shadow-Mode & Strategy Health Matrix</h4>
+          <span class="badge" style="background:#1e293b;color:#22c55e;font-size:10px;">AUTO-SWITCH ON</span>
+        </div>
+        <div style="background:#1e293b;padding:8px 12px;border-radius:8px;margin-bottom:6px;display:flex;justify-content:space-between;">
+          <span><b>BANKNIFTY:</b> PDL Trap Reclaim</span><span style="color:#22c55e;font-weight:bold;">🟢 LIVE (72% Win)</span>
+        </div>
+        <div style="background:#1e293b;padding:8px 12px;border-radius:8px;margin-bottom:6px;display:flex;justify-content:space-between;">
+          <span><b>NIFTY:</b> 15m ORB Breakout</span><span style="color:#22c55e;font-weight:bold;">🟢 LIVE (68% Win)</span>
+        </div>
+        <div style="background:#1e293b;padding:8px 12px;border-radius:8px;display:flex;justify-content:space-between;">
+          <span><b>SENSEX:</b> PDL Trap Reclaim</span><span style="color:#eab308;font-weight:bold;">🟡 SHADOW MODE (1/2 Virtual Wins)</span>
+        </div>
+      </div>
+
+      <!-- Active Trades Table -->
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <h4 style="margin:0;color:#e2e8f0;font-size:14px;">⚡ Active & Closed Trades (Dhan Bridge)</h4>
+          <button class="btn" onclick="fetchStage2State()" style="font-size:11px;padding:6px 12px;">Refresh</button>
+        </div>
+        <div style="overflow-x:auto;">
+          <table>
+            <thead>
+              <tr><th>Symbol</th><th>Side</th><th>Entry</th><th>Trail SL</th><th>Target</th><th>P&L</th><th>Status</th></tr>
+            </thead>
+            <tbody id="trades-body">
+              <tr><td colspan="7" style="text-align:center;color:#64748b;">Loading trades...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+
+  <script>
+    const MASTER_PIN = '0401';
+
+    function switchStage(stageNum) {
+      const s1 = document.getElementById('stage-1-view');
+      const s2 = document.getElementById('stage-2-view');
+      const t1 = document.getElementById('tab-stage1');
+      const t2 = document.getElementById('tab-stage2');
+
+      if (stageNum === 1) {
+        s1.style.display = 'block';
+        s2.style.display = 'none';
+        t1.className = 'stage-btn active';
+        t2.className = 'stage-btn';
+        fetchStage1Stats();
+      } else {
+        s1.style.display = 'none';
+        s2.style.display = 'block';
+        t1.className = 'stage-btn';
+        t2.className = 'stage-btn active';
+        fetchStage2State();
+      }
     }
 
-    async function fetchState() {
+    // STAGE 1: Fetch Users & Revenue
+    async function fetchStage1Stats() {
+      try {
+        const res = await fetch('/api/master/business-stats?pin=' + MASTER_PIN);
+        const d = await res.json();
+        if (!d.ok) return;
+
+        document.getElementById('b-users').innerText = d.total_users;
+        document.getElementById('b-paid').innerText = d.paid_orders;
+        document.getElementById('b-rev').innerText = '₹' + (d.total_revenue || 0).toLocaleString();
+        document.getElementById('b-pending').innerText = d.pending_utrs;
+
+        // Pending UTR Table
+        if (d.pending_list && d.pending_list.length) {
+          let pRows = '';
+          for (let p of d.pending_list) {
+            pRows += `<tr>
+              <td>#${p.id}</td>
+              <td>User #${p.uid}</td>
+              <td><span class="badge" style="background:#2563eb;">${p.plan}</span></td>
+              <td>₹${p.amount}</td>
+              <td><b>${p.utr}</b></td>
+              <td><button class="btn btn-green" onclick="approveUtr(${p.id})">Approve ✅</button></td>
+            </tr>`;
+          }
+          document.getElementById('pending-utr-body').innerHTML = pRows;
+        } else {
+          document.getElementById('pending-utr-body').innerHTML = '<tr><td colspan="6" style="text-align:center;color:#22c55e;">No pending UTRs! All cleared.</td></tr>';
+        }
+
+        // Users Table
+        if (d.users && d.users.length) {
+          let uRows = '';
+          for (let u of d.users) {
+            uRows += `<tr>
+              <td>#${u.id}</td>
+              <td><b>${u.email}</b></td>
+              <td>${u.mobile}</td>
+              <td><span class="badge" style="background:${u.plan.includes('ACTIVE')?'#15803d':'#334155'};">${u.plan}</span></td>
+              <td>${u.expires}</td>
+              <td><code>${u.ref || '--'}</code></td>
+            </tr>`;
+          }
+          document.getElementById('users-body').innerHTML = uRows;
+        }
+      } catch(e) {
+        console.log('Stage 1 error:', e);
+      }
+    }
+
+    async function approveUtr(pid) {
+      if (!confirm("Is payment #" + pid + " ko verify karke user plan active karna chahte hain?")) return;
+      const res = await fetch('/api/master/approve-utr', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({pin: MASTER_PIN, payment_id: pid})
+      });
+      const d = await res.json();
+      alert(d.msg || 'Approved!');
+      fetchStage1Stats();
+    }
+
+    // STAGE 2: Fetch Personal Trading Desk State
+    async function fetchStage2State() {
       try {
         const res = await fetch('/api/state');
         const d = await res.json();
@@ -376,8 +294,9 @@
       }
     }
 
-    fetchState();
-    setInterval(fetchState, 5000);
+    // Auto load Stage 2 by default
+    fetchStage2State();
+    setInterval(fetchStage2State, 5000);
   </script>
 </body>
 </html>
