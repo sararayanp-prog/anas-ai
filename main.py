@@ -105,149 +105,67 @@ def api_signin():
 
 # === BULLETPROOF PURE JSON PAYMENT ROUTE ===
 @app.route("/api/saas/pay", methods=["POST"])
-@app.route("/api/submit_utr", methods=["POST"])
-@app.route("/submit_utr", methods=["POST"])
-def api_universal_pay():
-    from flask import request, jsonify
-    import os, requests, db
-
-    try:
-        data = request.get_json(silent=True) or request.form.to_dict() or {}
-        raw_uid = data.get("user_id")
-        plan = str(data.get("plan") or "WEEKLY")
-        amt = float(data.get("amount") or 499.0)
-        utr = str(data.get("utr") or "").strip()
-
-        if not utr or len(utr) < 8:
-            return jsonify({"ok": False, "msg": "Kripya valid 12-digit UTR enter karein!"}), 200
-
-        conn = db.get_conn()
-        cur = conn.cursor()
-
-        # Relax constraints if table exists
-        try:
-            cur.execute("ALTER TABLE saas_payments ALTER COLUMN user_id DROP NOT NULL;")
-            cur.execute("ALTER TABLE saas_payments DROP CONSTRAINT IF EXISTS saas_payments_user_id_fkey;")
-            conn.commit()
-        except Exception:
-            conn.rollback()
-
-        # Safe user_id resolver (handles int, email, or referral code like 5FF0D6CF)
-        clean_uid = None
-        if raw_uid:
-            try:
-                clean_uid = int(raw_uid)
-            except Exception:
-                try:
-                    cur.execute("SELECT id FROM saas_users WHERE referral_code = %s OR email = %s LIMIT 1;", (str(raw_uid), str(raw_uid)))
-                    r = cur.fetchone()
-                    if r:
-                        clean_uid = r[0]
-                except Exception:
-                    conn.rollback()
-
-        cur.execute(
-            '''INSERT INTO saas_payments (user_id, amount, utr_ref, upi_id, status, plan_selected)
-               VALUES (%s, %s, %s, %s, %s, %s) RETURNING id;''',
-            (clean_uid, amt, utr, "Q57363994@ybl", "PENDING", plan)
-        )
-        pid = cur.fetchone()[0]
-        conn.commit()
-        conn.close()
-
-        # Telegram Alert to Admin
-        tg_token = os.getenv("TELEGRAM_BOT_TOKEN")
-        tg_chat = os.getenv("TELEGRAM_CHAT_ID")
-        if tg_token and tg_chat:
-            tg_msg = (
-                f"💳 <b>NEW UTR PAYMENT RECEIVED</b>\n\n"
-                f"<b>Payment ID:</b> #{pid}\n"
-                f"<b>User:</b> {clean_uid or raw_uid}\n"
-                f"<b>Plan:</b> {plan}\n"
-                f"<b>Amount:</b> ₹{amt}\n"
-                f"<b>UTR:</b> <code>{utr}</code>\n\n"
-                f"👉 <b>Approve:</b> https://anas.sarahics.in/api/saas/approve?id={pid}"
-            )
-            try:
-                requests.post(
-                    f"https://api.telegram.org/bot{tg_token}/sendMessage",
-                    json={"chat_id": tg_chat, "text": tg_msg, "parse_mode": "HTML"},
-                    timeout=5
-                )
-            except Exception:
-                pass
-
-        return jsonify({"ok": True, "msg": "UTR safalta-purvak jama ho gaya! Admin verification ke baad instant activate ho jayega."}), 200
-
-    except Exception as e:
-        # Crucial: Return JSON status 200 with error text so Cloud/Browser NEVER gets HTML
-        return jsonify({"ok": False, "msg": f"DB Notice: {str(e)}"}), 200
-
-
-@app.route("/api/saas/approve", methods=["GET"])
-def api_universal_approve():
-    from flask import request
-    import db
-    try:
-        pid = request.args.get("id")
-        if not pid:
-            return "Payment ID missing!", 400
-        conn = db.get_conn()
-        cur = conn.cursor()
-        cur.execute("SELECT user_id, plan_selected FROM saas_payments WHERE id = %s;", (pid,))
-        row = cur.fetchone()
-        if not row:
-            conn.close()
-            return "Payment not found!", 404
-        uid, plan = row[0], row[1] or "MONTHLY"
-        cur.execute("UPDATE saas_payments SET status = 'COMPLETED' WHERE id = %s;", (pid,))
-        if uid:
-            cur.execute("UPDATE saas_users SET plan_name = %s, plan_expires_at = NOW() + INTERVAL '30 days' WHERE id = %s;", (plan, uid))
-        conn.commit()
-        conn.close()
-        return f"<div style='font-family:Arial;padding:30px;background:#0f172a;color:#22c55e;'><h2>✅ Payment #{pid} Approved Successfully!</h2><p>User #{uid} plan is now active for 30 days.</p></div>"
-    except Exception as e:
-        return f"Approve Error: {str(e)}", 500
-
-
-@app.route("/api/saas/pay", methods=["POST"])
+@app.route("/api/pay", methods=["POST"])
 def api_saas_pay_direct():
     try:
-        data = request.get_json(force=True, silent=True) or {}
-        uid = data.get("user_id")
-        plan = str(data.get("plan", "WEEKLY")).strip()
-        amt = float(data.get("amount", 499.0))
-        utr = str(data.get("utr", "")).strip()
-        upi = str(data.get("upi_id", "Q57363994@ybl")).strip()
+        data = request.get_json(force=True, silent=True) or request.form.to_dict() or {}
+        raw_uid = data.get("user_id") or data.get("uid")
+        plan = str(data.get("plan") or data.get("plan_selected") or "WEEKLY").strip()
+        utr = str(data.get("utr") or data.get("utr_ref") or "").strip()
+        upi = str(data.get("upi_id") or "Q57363994@ybl").strip()
+        
+        try:
+            amt = float(data.get("amount") or 499.0)
+        except Exception:
+            amt = 499.0
 
-        if not utr or len(utr) < 6:
-            return jsonify({"ok": False, "msg": "Kripya valid 12-digit UTR Number enter karein!"}), 200
+        if not utr or len(utr) < 4:
+            return jsonify({"ok": False, "msg": "Kripya sahi UTR Reference Number enter karein!"}), 200
+
+        user_int_id = None
+        if raw_uid:
+            try:
+                user_int_id = int(raw_uid)
+            except Exception:
+                user_int_id = None
 
         conn = db.get_conn()
         cur = conn.cursor()
+        
+        # If user_id missing, find by current active session/email if present
+        if not user_int_id:
+            email = data.get("email")
+            if email:
+                try:
+                    cur.execute("SELECT id FROM saas_users WHERE email = %s;", (email,))
+                    r = cur.fetchone()
+                    if r: user_int_id = r[0]
+                except Exception:
+                    pass
+
         cur.execute("""
             INSERT INTO saas_payments (user_id, amount, utr, utr_ref, plan, plan_selected, upi_id, status)
             VALUES (%s, %s, %s, %s, %s, %s, %s, 'PENDING')
             RETURNING id;
-        """, (uid, amt, utr, utr, plan, plan, upi))
+        """, (user_int_id, amt, utr, utr, plan, plan, upi))
         pid = cur.fetchone()[0]
         conn.commit()
         conn.close()
 
-        # Admin Telegram Alert
+        # Telegram notification to Admin
         try:
             tg_token = os.getenv("TELEGRAM_BOT_TOKEN")
             tg_chat = os.getenv("TELEGRAM_CHAT_ID")
             if tg_token and tg_chat:
                 import requests
-                msg = f"💳 <b>Naya Payment Approval Request!</b>\n\n• Payment ID: #{pid}\n• User ID: #{uid}\n• Plan: {plan}\n• Amount: ₹{amt}\n• UTR: <code>{utr}</code>\n• UPI: {upi}"
+                msg = f"💳 <b>Naya Payment UTR Received!</b>\n\n• Payment ID: #{pid}\n• User ID: #{user_int_id}\n• Plan: {plan}\n• Amount: ₹{amt}\n• UTR: <code>{utr}</code>\n• UPI: {upi}"
                 requests.post(f"https://api.telegram.org/bot{tg_token}/sendMessage", json={"chat_id": tg_chat, "text": msg, "parse_mode": "HTML"}, timeout=4)
         except Exception:
             pass
 
-        return jsonify({"ok": True, "msg": "✅ UTR successfully submit ho gaya! Admin verification ke baad turant activate ho jayega.", "payment_id": pid}), 200
+        return jsonify({"ok": True, "msg": "✅ UTR successfully submit ho gaya! Admin verify karke turant activate kar dega.", "payment_id": pid}), 200
     except Exception as err:
-        return jsonify({"ok": False, "msg": f"DB Notice: {str(err)}"}), 200
+        return jsonify({"ok": False, "msg": f"Notice: {str(err)}"}), 200
 
 if __name__ == "__main__":
     db.init_db()
