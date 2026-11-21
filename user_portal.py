@@ -130,7 +130,7 @@ USER_DASHBOARD_HTML = '''<!DOCTYPE html>
       <a href="https://wa.me/919978982577" target="_blank" style="flex:1;text-decoration:none;">
         <button class="btn" style="background:#15803d;color:#fff;">💬 WhatsApp Support</button>
       </a>
-      <a href="https://t.me/sarahics_support" target="_blank" style="flex:1;text-decoration:none;">
+      <a href="https://t.me/aivalue8" target="_blank" style="flex:1;text-decoration:none;">
         <button class="btn" style="background:#0284c7;color:#fff;">✈️ Telegram Support</button>
       </a>
     </div>

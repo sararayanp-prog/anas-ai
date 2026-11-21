@@ -106,7 +106,7 @@ PORTAL_HTML = """<!DOCTYPE html>
     <a href="#" class="sidebar-link" onclick="toggleSidebar(); switchTab('signup')">📝 Register Account</a>
     
     <a href="https://wa.me/919978982577" target="_blank" class="sidebar-link">💬 WhatsApp Helpdesk</a>
-    <a href="https://t.me/sarahics_support" target="_blank" class="sidebar-link">✈️ Telegram Channel</a>
+    <a href="https://t.me/aivalue8" target="_blank" class="sidebar-link">✈️ Telegram Channel</a>
     <div style="margin-top:auto; font-size:11px; color:#64748b; text-align:center;">
       Sarah ICS SNPL • Institutional v13.0
     </div>
@@ -293,7 +293,7 @@ PORTAL_HTML = """<!DOCTYPE html>
     <!-- SUPPORT LINKS -->
     <div class="support-row">
       <a href="https://wa.me/919978982577" target="_blank" class="support-btn btn-wa">💬 WhatsApp Support</a>
-      <a href="https://t.me/sarahics_support" target="_blank" class="support-btn btn-tg">✈️ Telegram Support</a>
+      <a href="https://t.me/aivalue8" target="_blank" class="support-btn btn-tg">✈️ Telegram Support</a>
     </div>
   </div>
 
