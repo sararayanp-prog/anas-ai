@@ -361,7 +361,7 @@ async function submitUTR(){
         showMsg("Server ready ho raha hai. Kripya 20 seconds baad dubara Submit dabayein.", "orange");
         return;
       }
-    if(data.ok){
+    if(data.ok || data.success || data.status === 'success'){
       showMsg("payMsg", "✅ UTR Submit ho gaya! Admin verification ke baad 5-10 min me plan activate ho jayega.", false);
       document.getElementById("utrInput").value = "";
     } else {
