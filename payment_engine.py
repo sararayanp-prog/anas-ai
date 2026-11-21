@@ -1,3 +1,4 @@
+import notify_service
 import os, requests, time
 from flask import Blueprint, request, jsonify
 import db, anas_cypher
@@ -143,7 +144,17 @@ def tg_webhook():
                         cur.execute(f"UPDATE saas_users SET plan_name = %s, plan_expires_at = NOW() + INTERVAL '{days} days' WHERE LOWER(email) = %s;", (plan_name, u_email.lower()))
                     conn.commit()
                     
-                    requests.post(f"https://api.telegram.org/bot{token}/answerCallbackQuery", json={
+                    
+                    # Calculate Expiry Date string
+                    cur.execute("SELECT plan_expires_at, name FROM saas_users WHERE id = %s OR LOWER(email) = %s;", (uid, str(u_email).lower()))
+                    u_row = cur.fetchone()
+                    exp_str = u_row[0].strftime("%d %B %Y, %I:%M %p") if (u_row and u_row[0]) else f"Next {days} Days"
+                    u_name = u_row[1] if (u_row and u_row[1]) else "Trader"
+                    
+                    # Send Activation Email via Brevo
+                    mail_ok, mail_msg = notify_service.notify_activation(u_email, u_name, plan_name, exp_str)
+                    
+                    requests.post(f"https://api.telegram.org/bot{token}/answerCallbackQuery" , json={
                         "callback_query_id": cb_id,
                         "text": f"✅ Payment #{pid} Approved! Plan active for {days} days."
                     }, timeout=4)
@@ -161,7 +172,13 @@ def tg_webhook():
                 cur.execute("UPDATE saas_payments SET status = 'REJECTED' WHERE id = %s;", (pid,))
                 conn.commit()
                 
-                requests.post(f"https://api.telegram.org/bot{token}/answerCallbackQuery", json={
+                
+                cur.execute("SELECT user_email, utr FROM saas_payments WHERE id = %s;", (pid,))
+                rej_row = cur.fetchone()
+                if rej_row:
+                    notify_service.notify_rejection(rej_row[0], "Trader", rej_row[1])
+                
+                requests.post(f"https://api.telegram.org/bot{token}/answerCallbackQuery" , json={
                     "callback_query_id": cb_id,
                     "text": f"❌ Payment #{pid} Rejected!"
                 }, timeout=4)
