@@ -386,3 +386,21 @@ if __name__ == "__main__":
     db.init_db()
     saas_db.init_saas_db()
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", 8000)), use_reloader=False)
+
+@app.route("/api/saas/update-strategy", methods=["POST"])
+def api_saas_update_strategy():
+    data = request.get_json(silent=True) or {}
+    uid = data.get("user_id")
+    strat = (data.get("strategy") or "S1_IQ_CORE").strip()
+    if not uid:
+        return jsonify({"ok": False, "msg": "User ID required"}), 400
+    try:
+        import db
+        conn = db.get_conn()
+        cur = conn.cursor()
+        cur.execute("UPDATE saas_users SET selected_strategy = %s WHERE id = %s;", (strat, uid))
+        conn.commit()
+        conn.close()
+        return jsonify({"ok": True, "msg": "Strategy preference updated."})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Strategy update error: {e}"}), 500

@@ -189,7 +189,7 @@ PORTAL_HTML = """<!DOCTYPE html>
         <!-- MANDATORY INVITE CODE SECTION -->
         <div class="p-4 rounded-2xl bg-amber-500/5 border border-amber-500/20">
           <label class="block text-xs font-bold text-amber-400 uppercase mb-1">Compulsory Invite / Referral Code</label>
-          <input type="text" id="su_ref" placeholder="Enter Invite Code (e.g. ANASVIP or Friend's Code)" class="w-full bg-slate-900 border border-amber-500/30 rounded-xl px-3.5 py-2.5 text-xs text-amber-300 font-mono uppercase focus:outline-none focus:border-amber-400">
+          <input type="text" id="su_ref" placeholder="Enter Invite Code (e.g. RAYAN2807 or Friend's Code)" class="w-full bg-slate-900 border border-amber-500/30 rounded-xl px-3.5 py-2.5 text-xs text-amber-300 font-mono uppercase focus:outline-none focus:border-amber-400">
           <p class="text-[11px] text-slate-400 mt-2 leading-relaxed">
             Private Quant Access is restricted. Don't have a referral code? Contact Uplink:
           </p>
@@ -370,11 +370,17 @@ PORTAL_HTML = """<!DOCTYPE html>
       <!-- 2. Strategy Selector -->
       <div class="glass-card p-4 rounded-2xl border border-white/10">
         <span class="font-bold text-white uppercase text-[11px] block mb-1">📈 Quantitative Strategy</span>
-        <select id="sb_strategy" class="w-full bg-slate-900 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-400">
-          <option value="S1_IQ_CORE">ANAS Institutional Hybrid (78.4% Win Rate)</option>
-          <option value="S2_GAMMA">Gamma Scalp Multiplier (BankNifty Expiry)</option>
-          <option value="S3_VWAP">VWAP Reversion Alpha</option>
-          <option value="S4_ORB">9:20 High Probability Straddle</option>
+        <select id="sb_strategy" onchange="saveStrategyPreference()" class="w-full bg-slate-900 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-400">
+          <option value="S1_IQ_CORE">ANAS Institutional Hybrid (IQ Core - 78.4% Win Rate)</option>
+          <option value="S2_SUPERTREND">SuperTrend Pullback (ATR Band + EMA-9 Dip)</option>
+          <option value="S3_ORB_PRIME">15m ORB Prime (9:15-9:30 Breakout + ADX>=23)</option>
+          <option value="S4_EMA_SURF">EMA 9/21 Trend Surf (Dual Trend Alignment)</option>
+          <option value="S5_INSIDE_BAR">Inside-Bar Breakout (Consolidation Squeeze)</option>
+          <option value="S6_LIQ_TRAP">PDH/PDL Liquidity Trap (Stop-Hunt Reversal)</option>
+          <option value="S7_BB_SQUEEZE">Bollinger Squeeze (Expansion + ADX>=22)</option>
+          <option value="S8_RSI_DIP">RSI Momentum Dip (15m Uptrend Pullback)</option>
+          <option value="S9_GAP_RUNNER">Morning Gap Runner (Opening Momentum)</option>
+          <option value="S10_POWER_HOUR">Power-Hour Blitz (Closing Momentum Break)</option>
         </select>
       </div>
 
@@ -676,6 +682,22 @@ PORTAL_HTML = """<!DOCTYPE html>
         btn.innerText = 'Copied!';
         setTimeout(() => btn.innerText = 'Copy Link', 2500);
       });
+    }
+
+    
+    async function saveStrategyPreference() {
+      const strat = document.getElementById('sb_strategy').value;
+      const text = document.getElementById('sb_strategy').options[document.getElementById('sb_strategy').selectedIndex].text;
+      document.getElementById('u_strategy_display').innerText = text;
+      if (!CURRENT_USER || !CURRENT_USER.id) return;
+      try {
+        await fetch('/api/saas/update-strategy', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({user_id: CURRENT_USER.id, strategy: strat})
+        });
+        showAlert('Strategy updated: ' + text, false);
+      } catch(e) {}
     }
 
     function doLogout() {
