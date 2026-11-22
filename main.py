@@ -404,3 +404,143 @@ def api_saas_update_strategy():
         return jsonify({"ok": True, "msg": "Strategy preference updated."})
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Strategy update error: {e}"}), 500
+
+# === FORENSIC USER AUDIT & TRADE JOURNAL APIS ===
+@app.route("/api/master/user-audit", methods=["GET"])
+def api_master_user_audit():
+    pin = request.args.get("pin", "")
+    if pin != "0401":
+        return jsonify({"ok": False, "msg": "Unauthorized"}), 403
+
+    query = (request.args.get("query") or "").strip()
+    if not query:
+        return jsonify({"ok": False, "msg": "User ID, Email ya Client ID daalein."}), 400
+
+    try:
+        import db
+        conn = db.get_conn()
+        cur = conn.cursor()
+        
+        # Search by ID, Email, or Broker Client ID
+        cur.execute("""
+            SELECT id, name, email, mobile, broker_name, broker_client_id, 
+                   plan_name, plan_expires_at, selected_strategy, referral_code, created_at
+            FROM saas_users 
+            WHERE CAST(id AS TEXT) = %s OR LOWER(email) = LOWER(%s) OR UPPER(broker_client_id) = UPPER(%s)
+            LIMIT 1;
+        """, (query, query, query))
+        user_row = cur.fetchone()
+
+        if not user_row:
+            conn.close()
+            return jsonify({"ok": False, "msg": "Koi trader account nahi mila."}), 404
+
+        uid = user_row[0]
+        user_data = {
+            "id": user_row[0], "name": user_row[1], "email": user_row[2],
+            "mobile": user_row[3], "broker_name": user_row[4], "broker_client_id": user_row[5],
+            "plan": user_row[6], "expires": str(user_row[7])[:10] if user_row[7] else "N/A",
+            "strategy": user_row[8] or "S1_IQ_CORE", "referral_code": user_row[9],
+            "joined_at": str(user_row[10])[:19] if user_row[10] else "N/A"
+        }
+
+        # Fetch all trades for forensic audit
+        cur.execute("""
+            SELECT id, symbol, side, entry_price, exit_price, trail_sl, target, 
+                   pnl, pnl_pct, strategy_id, execution_mode, status, entry_time, exit_time
+            FROM trades_journal 
+            WHERE user_id = %s 
+            ORDER BY entry_time DESC;
+        """, (uid,))
+        trades = []
+        tot_pnl = 0.0
+        wins, losses = 0, 0
+        manual_interventions = 0
+
+        for r in cur.fetchall():
+            pnl_val = float(r[7] or 0.0)
+            tot_pnl += pnl_val
+            if pnl_val >= 0: wins += 1
+            else: losses += 1
+            if r[10] != 'ALGO_AUTO': manual_interventions += 1
+
+            trades.append({
+                "id": r[0], "symbol": r[1], "side": r[2],
+                "entry": float(r[3]), "exit": float(r[4]), "trail_sl": float(r[5]), "target": float(r[6]),
+                "pnl": pnl_val, "pnl_pct": float(r[8] or 0.0), "strategy": r[9],
+                "mode": r[10], "status": r[11],
+                "entry_time": str(r[12])[:19] if r[12] else "",
+                "exit_time": str(r[13])[:19] if r[13] else ""
+            })
+
+        conn.close()
+        tot_trades = len(trades)
+        win_rate = round((wins / tot_trades * 100), 1) if tot_trades > 0 else 0.0
+
+        return jsonify({
+            "ok": True,
+            "user": user_data,
+            "stats": {
+                "total_pnl": round(tot_pnl, 2),
+                "total_trades": tot_trades,
+                "wins": wins, "losses": losses,
+                "win_rate": win_rate,
+                "manual_interventions": manual_interventions
+            },
+            "trades": trades
+        })
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Audit error: {e}"}), 500
+
+@app.route("/api/saas/user-trades", methods=["GET"])
+def api_saas_user_trades():
+    uid = request.args.get("user_id")
+    period = request.args.get("period", "today")
+    from_date = request.args.get("from", "")
+    to_date = request.args.get("to", "")
+
+    if not uid:
+        return jsonify({"ok": False, "msg": "User ID required"}), 400
+
+    try:
+        import db, datetime
+        conn = db.get_conn()
+        cur = conn.cursor()
+
+        # Date filtering logic
+        sql_date = "entry_time >= CURRENT_DATE"
+        if period == "yesterday":
+            sql_date = "entry_time >= CURRENT_DATE - INTERVAL '1 day' AND entry_time < CURRENT_DATE"
+        elif period == "this_week":
+            sql_date = "entry_time >= DATE_TRUNC('week', CURRENT_DATE)"
+        elif period == "last_week":
+            sql_date = "entry_time >= DATE_TRUNC('week', CURRENT_DATE) - INTERVAL '1 week' AND entry_time < DATE_TRUNC('week', CURRENT_DATE)"
+        elif period == "this_month":
+            sql_date = "entry_time >= DATE_TRUNC('month', CURRENT_DATE)"
+        elif period == "last_month":
+            sql_date = "entry_time >= DATE_TRUNC('month', CURRENT_DATE) - INTERVAL '1 month' AND entry_time < DATE_TRUNC('month', CURRENT_DATE)"
+        elif period == "custom" and from_date and to_date:
+            sql_date = f"entry_time >= '{from_date} 00:00:00' AND entry_time <= '{to_date} 23:59:59'"
+
+        cur.execute(f"""
+            SELECT id, symbol, side, entry_price, exit_price, trail_sl, target, pnl, pnl_pct, strategy_id, execution_mode, status, entry_time
+            FROM trades_journal 
+            WHERE user_id = %s AND {sql_date}
+            ORDER BY entry_time DESC;
+        """, (uid,))
+
+        trades = []
+        tot_pnl = 0.0
+        for r in cur.fetchall():
+            p = float(r[7] or 0.0)
+            tot_pnl += p
+            trades.append({
+                "symbol": r[1], "side": r[2], "entry": float(r[3]), "exit": float(r[4]),
+                "trail_sl": float(r[5]), "target": float(r[6]), "pnl": p, "pnl_pct": float(r[8] or 0.0),
+                "strategy": r[9], "mode": r[10], "status": r[11], "time": str(r[12])[11:16] if r[12] else ""
+            })
+
+        conn.close()
+        return jsonify({"ok": True, "total_pnl": round(tot_pnl, 2), "trades": trades})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Error: {e}"}), 500

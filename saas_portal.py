@@ -292,6 +292,26 @@ PORTAL_HTML = """<!DOCTYPE html>
         </div>
       </div>
 
+      
+      <!-- LIVE TODAY'S PNL & PERFORMANCE HERO -->
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+        <div class="glass-card p-5 rounded-2xl border-l-4 border-l-emerald-400 glow-emerald">
+          <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Today's Algorithmic PnL</div>
+          <div id="u_live_pnl" class="text-3xl font-extrabold text-emerald-400 mt-1 mono">₹0.00 (+0.0%)</div>
+          <div class="text-[11px] text-slate-500 mt-1">Autonomous Trailing Real-time</div>
+        </div>
+        <div class="glass-card p-5 rounded-2xl border-l-4 border-l-cyan-400">
+          <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Trades Executed Today</div>
+          <div id="u_live_trades_count" class="text-3xl font-extrabold text-cyan-400 mt-1 mono">0 / 3</div>
+          <div class="text-[11px] text-slate-500 mt-1">Strict Risk Limit Active</div>
+        </div>
+        <div class="glass-card p-5 rounded-2xl border-l-4 border-l-purple-500">
+          <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Current Win Ratio</div>
+          <div id="u_live_win_rate" class="text-3xl font-extrabold text-purple-400 mt-1 mono">100%</div>
+          <div class="text-[11px] text-slate-500 mt-1">Algorithm Precision Index</div>
+        </div>
+      </div>
+
       <!-- DAILY LIVE RADAR (READ-ONLY CLEAN VIEW) -->
       <div class="glass-card rounded-3xl p-6 sm:p-8 border border-cyan-500/20 glow-cyan">
         <div class="flex items-center justify-between pb-4 border-b border-white/10">
@@ -419,6 +439,39 @@ PORTAL_HTML = """<!DOCTYPE html>
         <a id="sb_share_wa" target="_blank" class="block w-full text-center py-2 rounded-xl bg-emerald-500 text-black font-bold transition hover:opacity-95">
           Share Invite on WhatsApp ➔
         </a>
+      </div>
+
+      
+      <!-- 5. HISTORICAL TRADE JOURNAL & DATE FILTERS -->
+      <div class="glass-card p-4 rounded-2xl border border-white/10">
+        <div class="flex items-center justify-between mb-2">
+          <span class="font-bold text-white uppercase text-[11px]">📊 Trade Journal & Analytics</span>
+          <span id="sb_pnl_badge" class="text-[10px] font-bold text-emerald-400 font-mono">₹0.00</span>
+        </div>
+        <p class="text-slate-400 text-[11px] mb-3">Filter verified trades by time period or custom dates.</p>
+        
+        <!-- Filter Pills -->
+        <div class="flex flex-wrap gap-1.5 mb-3">
+          <button onclick="loadUserJournal('today')" class="px-2.5 py-1 rounded-lg bg-cyan-500 text-black font-bold text-[10px] transition">Today</button>
+          <button onclick="loadUserJournal('yesterday')" class="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 text-[10px] transition">Yesterday</button>
+          <button onclick="loadUserJournal('this_week')" class="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 text-[10px] transition">This Week</button>
+          <button onclick="loadUserJournal('last_week')" class="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 text-[10px] transition">Last Week</button>
+          <button onclick="loadUserJournal('this_month')" class="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 text-[10px] transition">This Month</button>
+          <button onclick="loadUserJournal('last_month')" class="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 text-[10px] transition">Last Month</button>
+        </div>
+
+        <!-- Custom Date Range -->
+        <div class="grid grid-cols-2 gap-2 mb-3">
+          <input type="date" id="sb_from_date" class="bg-slate-900 border border-white/10 rounded-lg p-1 text-[10px] text-white">
+          <input type="date" id="sb_to_date" class="bg-slate-900 border border-white/10 rounded-lg p-1 text-[10px] text-white">
+        </div>
+        <button onclick="loadUserJournal('custom')" class="w-full py-1.5 bg-white/10 hover:bg-white/20 text-white font-semibold rounded-lg text-[10px] transition mb-3">
+          Filter Custom Range 📅
+        </button>
+
+        <div id="sb_journal_list" class="space-y-2 max-h-48 overflow-y-auto font-mono text-[11px]">
+          <div class="text-center text-slate-500 py-3 font-sans">No trades recorded in selected period.</div>
+        </div>
       </div>
 
       <!-- 4. Support Links -->
@@ -697,6 +750,46 @@ PORTAL_HTML = """<!DOCTYPE html>
           body: JSON.stringify({user_id: CURRENT_USER.id, strategy: strat})
         });
         showAlert('Strategy updated: ' + text, false);
+      } catch(e) {}
+    }
+
+    
+    async function loadUserJournal(period) {
+      if (!CURRENT_USER || !CURRENT_USER.id) return;
+      let url = '/api/saas/user-trades?user_id=' + CURRENT_USER.id + '&period=' + period;
+      if (period === 'custom') {
+        const fromD = document.getElementById('sb_from_date').value;
+        const toD = document.getElementById('sb_to_date').value;
+        if (!fromD || !toD) { showAlert('Start aur End dono date select karein.'); return; }
+        url += '&from=' + fromD + '&to=' + toD;
+      }
+
+      try {
+        const res = await fetch(url);
+        const d = await res.json();
+        if (!d.ok) return;
+
+        const badge = document.getElementById('sb_pnl_badge');
+        badge.innerText = (d.total_pnl >= 0 ? '+' : '') + '₹' + d.total_pnl.toLocaleString('en-IN');
+        badge.className = 'text-[10px] font-bold font-mono ' + (d.total_pnl >= 0 ? 'text-emerald-400' : 'text-rose-400');
+
+        const box = document.getElementById('sb_journal_list');
+        if (!d.trades || d.trades.length === 0) {
+          box.innerHTML = '<div class="text-center text-slate-500 py-3 font-sans">No trades in this period.</div>';
+        } else {
+          box.innerHTML = d.trades.map(t => `
+            <div class="p-2 rounded-xl bg-slate-900/80 border border-white/5 flex items-center justify-between">
+              <div>
+                <div class="font-bold text-white text-[11px]">${t.symbol} <span class="text-[9px] ${t.side.includes('CE')?'text-emerald-400':'text-rose-400'}">${t.side}</span></div>
+                <div class="text-[9px] text-slate-400">${t.strategy} • ${t.time}</div>
+              </div>
+              <div class="text-right">
+                <div class="font-bold ${t.pnl>=0?'text-emerald-400':'text-rose-400'}">${t.pnl>=0?'+':''}₹${t.pnl}</div>
+                <div class="text-[9px] text-slate-500">${t.mode}</div>
+              </div>
+            </div>
+          `).join('');
+        }
       } catch(e) {}
     }
 

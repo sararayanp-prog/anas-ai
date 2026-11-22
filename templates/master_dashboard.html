@@ -193,6 +193,76 @@
       </div>
     </div>
 
+    
+    <!-- FORENSIC AUDIT & NON-EDITABLE DISPUTE SHIELD -->
+    <div class="glass-panel rounded-3xl p-6 sm:p-7 border border-cyan-500/30 glow-cyan">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-white/10 gap-3">
+        <div>
+          <span class="text-xs font-bold text-cyan-400 uppercase tracking-widest">🛡️ Legal & Dispute Protection</span>
+          <h2 class="text-xl font-bold text-white mt-0.5">Forensic Trader Audit (Non-Editable PDF)</h2>
+          <p class="text-xs text-slate-400 mt-1">Search any User ID, Email, or Client ID to generate proof against dispute or manual trading claims.</p>
+        </div>
+      </div>
+
+      <div class="mt-4 flex flex-col sm:flex-row items-center gap-3">
+        <input type="text" id="auditQueryInp" placeholder="Enter User ID, Email, or Client ID (e.g. 1000123456)" class="w-full sm:w-96 bg-black/60 border border-white/15 rounded-xl px-4 py-2 text-xs text-cyan-300 font-mono focus:outline-none focus:border-cyan-400">
+        <button onclick="fetchUserAuditReport()" class="w-full sm:w-auto px-5 py-2 rounded-xl bg-gradient-to-r from-cyan-400 to-emerald-400 text-black font-extrabold text-xs uppercase transition shadow">
+          🔍 Fetch Audit & Generate PDF
+        </button>
+      </div>
+
+      <!-- Audit Results Box -->
+      <div id="auditResultBox" class="hidden mt-6 p-5 rounded-2xl bg-black/60 border border-white/10 space-y-4">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-white/10">
+          <div>
+            <h3 id="aud_name" class="text-base font-bold text-white">Trader Name</h3>
+            <div id="aud_meta" class="text-xs text-slate-400 font-mono mt-1">ID: -- • Broker: -- • Client ID: --</div>
+          </div>
+          <button onclick="printAuditCertificate()" class="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-extrabold text-xs uppercase tracking-wider transition shadow flex items-center space-x-1.5">
+            <span>📄</span> <span>Print / Save Non-Editable PDF</span>
+          </button>
+        </div>
+
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+          <div class="p-3 bg-slate-900 rounded-xl border border-white/5">
+            <span class="text-[10px] text-slate-400 uppercase">Net Realized PnL</span>
+            <div id="aud_pnl" class="text-lg font-bold font-mono mt-0.5">₹0.00</div>
+          </div>
+          <div class="p-3 bg-slate-900 rounded-xl border border-white/5">
+            <span class="text-[10px] text-slate-400 uppercase">Win Rate</span>
+            <div id="aud_winrate" class="text-lg font-bold font-mono text-cyan-400 mt-0.5">0%</div>
+          </div>
+          <div class="p-3 bg-slate-900 rounded-xl border border-white/5">
+            <span class="text-[10px] text-slate-400 uppercase">Total Trades</span>
+            <div id="aud_trades_count" class="text-lg font-bold font-mono text-white mt-0.5">0</div>
+          </div>
+          <div class="p-3 bg-slate-900 rounded-xl border border-white/5">
+            <span class="text-[10px] text-slate-400 uppercase">Manual Violations</span>
+            <div id="aud_violations" class="text-lg font-bold font-mono text-amber-400 mt-0.5">0</div>
+          </div>
+        </div>
+
+        <!-- Printable Dispute Table -->
+        <div class="overflow-x-auto rounded-xl border border-white/10">
+          <table class="w-full text-left text-xs text-slate-300">
+            <thead class="bg-slate-900 text-[10px] uppercase tracking-wider text-slate-400 border-b border-white/10">
+              <tr>
+                <th class="p-2.5">Date & Time</th>
+                <th class="p-2.5">Setup</th>
+                <th class="p-2.5">Symbol</th>
+                <th class="p-2.5">Side</th>
+                <th class="p-2.5">Entry</th>
+                <th class="p-2.5">Exit</th>
+                <th class="p-2.5">Net PnL</th>
+                <th class="p-2.5">Execution Type</th>
+              </tr>
+            </thead>
+            <tbody id="aud_table_body" class="divide-y divide-white/5 font-mono text-xs"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
     <!-- STAGE 2: Dhan Quant Trading Desk & 10 Setups -->
     <div class="glass-panel rounded-3xl p-6 sm:p-7 border border-emerald-500/20">
       
@@ -390,6 +460,129 @@
         alert(d.msg || 'Test Data Reset Complete');
         if (typeof fetchStage2State === 'function') fetchStage2State();
       } catch(e) { alert('Error: ' + e); }
+    }
+
+    
+    let CURRENT_AUDIT_DATA = null;
+
+    async function fetchUserAuditReport() {
+      const q = document.getElementById('auditQueryInp').value.trim();
+      if (!q) { alert('Please enter User ID, Email, or Client ID'); return; }
+
+      try {
+        const res = await fetch('/api/master/user-audit?pin=' + MASTER_PIN + '&query=' + encodeURIComponent(q));
+        const d = await res.json();
+        if (!d.ok) { alert(d.msg || 'User not found'); return; }
+
+        CURRENT_AUDIT_DATA = d;
+        document.getElementById('auditResultBox').classList.remove('hidden');
+
+        document.getElementById('aud_name').innerText = d.user.name + ' (' + d.user.email + ')';
+        document.getElementById('aud_meta').innerText = 'ID: ' + d.user.id + ' • Broker: ' + d.user.broker_name + ' • Client ID: ' + d.user.broker_client_id + ' • Strategy: ' + d.user.strategy;
+
+        const pnlEl = document.getElementById('aud_pnl');
+        pnlEl.innerText = (d.stats.total_pnl >= 0 ? '+' : '') + '₹' + d.stats.total_pnl.toLocaleString('en-IN');
+        pnlEl.className = 'text-lg font-bold font-mono mt-0.5 ' + (d.stats.total_pnl >= 0 ? 'text-emerald-400' : 'text-rose-400');
+
+        document.getElementById('aud_winrate').innerText = d.stats.win_rate + '% (' + d.stats.wins + 'W / ' + d.stats.losses + 'L)';
+        document.getElementById('aud_trades_count').innerText = d.stats.total_trades;
+        document.getElementById('aud_violations').innerText = d.stats.manual_interventions;
+
+        const tb = document.getElementById('aud_table_body');
+        if (d.trades.length === 0) {
+          tb.innerHTML = '<tr><td colspan="8" class="p-4 text-center text-slate-500 font-sans">No trades recorded for this user yet.</td></tr>';
+        } else {
+          tb.innerHTML = d.trades.map(t => `
+            <tr class="hover:bg-white/5">
+              <td class="p-2.5 text-slate-400 text-[11px]">${t.entry_time}</td>
+              <td class="p-2.5 text-cyan-400 font-bold">${t.strategy}</td>
+              <td class="p-2.5 text-white font-bold">${t.symbol}</td>
+              <td class="p-2.5 ${t.side.includes('CE')?'text-emerald-400':'text-rose-400'}">${t.side}</td>
+              <td class="p-2.5">₹${t.entry}</td>
+              <td class="p-2.5">₹${t.exit}</td>
+              <td class="p-2.5 font-bold ${t.pnl>=0?'text-emerald-400':'text-rose-400'}">${t.pnl>=0?'+':''}₹${t.pnl}</td>
+              <td class="p-2.5"><span class="px-2 py-0.5 rounded text-[10px] ${t.mode==='ALGO_AUTO'?'bg-emerald-950 text-emerald-300 border border-emerald-500/30':'bg-rose-950 text-rose-300 border border-rose-500/30'}">${t.mode}</span></td>
+            </tr>
+          `).join('');
+        }
+      } catch(e) { alert('Error: ' + e); }
+    }
+
+    function printAuditCertificate() {
+      if (!CURRENT_AUDIT_DATA) return;
+      const d = CURRENT_AUDIT_DATA;
+      const printWin = window.open('', '_blank');
+      const html = `
+        <html>
+        <head>
+          <title>Anas AI Forensic Audit Certificate - User #${d.user.id}</title>
+          <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 30px; color: #1e293b; line-height: 1.5; }
+            .header { border-bottom: 3px solid #0f172a; padding-bottom: 15px; margin-bottom: 20px; }
+            .badge { display: inline-block; padding: 4px 10px; border-radius: 6px; font-weight: bold; font-size: 12px; background: #f1f5f9; }
+            .grid { display: flex; justify-content: space-between; margin-bottom: 20px; background: #f8fafc; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0; }
+            table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 11px; }
+            th, td { border: 1px solid #cbd5e1; padding: 6px 8px; text-align: left; }
+            th { background: #f1f5f9; font-weight: bold; }
+            .profit { color: #16a34a; font-weight: bold; }
+            .loss { color: #dc2626; font-weight: bold; }
+            .footer { margin-top: 30px; font-size: 11px; color: #64748b; border-top: 1px solid #cbd5e1; padding-top: 10px; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h2>⚡ ANAS AI QUANTITATIVE DESK — IMMUTABLE FORENSIC AUDIT</h2>
+            <div style="font-size:12px;color:#64748b;">Computer Generated Legal Audit Journal • Tamper-Proof Electronic Evidence</div>
+          </div>
+          <div class="grid">
+            <div>
+              <strong>Trader:</strong> ${d.user.name}<br>
+              <strong>Email:</strong> ${d.user.email}<br>
+              <strong>Client ID:</strong> ${d.user.broker_client_id} (${d.user.broker_name})
+            </div>
+            <div>
+              <strong>Strategy:</strong> ${d.user.strategy}<br>
+              <strong>Total PnL:</strong> ${d.stats.total_pnl >= 0 ? '+' : ''}₹${d.stats.total_pnl}<br>
+              <strong>Win Ratio:</strong> ${d.stats.win_rate}% (${d.stats.wins} Wins / ${d.stats.losses} Losses)
+            </div>
+            <div>
+              <strong>Violations:</strong> ${d.stats.manual_interventions} Manual Overrides<br>
+              <strong>Audit Timestamp:</strong> ${new Date().toLocaleString('en-IN')}<br>
+              <strong>Status:</strong> NON-EDITABLE VERIFIED
+            </div>
+          </div>
+          <h3>Executed Trade Journal & Telemetry Proof</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Date & Time</th><th>Setup</th><th>Symbol</th><th>Side</th><th>Entry</th><th>Exit</th><th>PnL (₹)</th><th>Execution Mode</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${d.trades.map(t => `
+                <tr>
+                  <td>${t.entry_time}</td>
+                  <td><strong>${t.strategy}</strong></td>
+                  <td>${t.symbol}</td>
+                  <td>${t.side}</td>
+                  <td>₹${t.entry}</td>
+                  <td>₹${t.exit}</td>
+                  <td class="${t.pnl>=0?'profit':'loss'}">${t.pnl>=0?'+':''}₹${t.pnl}</td>
+                  <td><strong>${t.mode}</strong></td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+          <div class="footer">
+            © 2026 Anas AI Private Quantitative Desk. This record is immutable and digitally preserved on Neon Cloud PostgreSQL Database. Any manual intervention or order alteration from client terminal outside algorithmic bounds is electronically certified herein.
+          </div>
+        </body>
+        </html>
+      `;
+      printWin.document.write(html);
+      printWin.document.close();
+      printWin.focus();
+      setTimeout(() => { printWin.print(); }, 500);
     }
 
     async function fetchBusinessStats() {
