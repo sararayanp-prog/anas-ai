@@ -1,408 +1,451 @@
 <!DOCTYPE html>
-<html lang="hi">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>ANAS AI — Master Executive Suite</title>
-  <link rel="manifest" href="/manifest.json">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Anas AI | Stealth Master Control Desk</title>
+  <!-- Tailwind CSS & Google Fonts -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+  
   <style>
-    * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; -webkit-tap-highlight-color: transparent; }
-    body { margin: 0; background: #070d19; color: #e2e8f0; padding-bottom: 30px; }
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background-color: #080b11;
+      color: #f8fafc;
+      overflow-x: hidden;
+    }
+    .mono { font-family: 'JetBrains Mono', monospace; }
     
-    /* Top Bar with Visible Hamburger */
-    .top-bar { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: #0f172a; border-bottom: 1px solid #1e293b; position: sticky; top: 0; z-index: 100; }
-    .hamburger-btn { background: #1e293b; border: 1px solid #38bdf8; color: #38bdf8; font-size: 20px; border-radius: 8px; width: 42px; height: 42px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
-    .brand-title { font-size: 16px; font-weight: 800; color: #38bdf8; display: flex; align-items: center; gap: 8px; }
-
-    /* Sliding Sidebar Drawer */
-    #sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 998; backdrop-filter: blur(2px); }
-    #sidebar-drawer { position: fixed; top: 0; left: -320px; width: 300px; height: 100%; background: #0f172a; border-right: 1px solid #1e293b; z-index: 999; transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1); display: flex; flex-direction: column; }
-    #sidebar-drawer.open { left: 0; }
-    .drawer-header { display: flex; justify-content: space-between; align-items: center; padding: 16px; border-bottom: 1px solid #1e293b; }
-    .drawer-menu { padding: 12px 10px; overflow-y: auto; flex: 1; }
-    .menu-item { display: flex; align-items: center; gap: 12px; padding: 11px 14px; margin-bottom: 6px; border-radius: 10px; background: #1e293b; color: #cbd5e1; text-decoration: none; font-size: 13px; font-weight: 600; cursor: pointer; border: 1px solid transparent; }
-    .menu-item:hover { background: #334155; border-color: #38bdf8; }
-
-    /* 2-STAGE SWITCHER TABS */
-    .stage-tabs { display: flex; background: #0f172a; padding: 8px 14px; border-bottom: 1px solid #1e293b; gap: 8px; }
-    .stage-btn { flex: 1; padding: 10px; border-radius: 10px; border: 1px solid #334155; background: #1e293b; color: #94a3b8; font-weight: 700; font-size: 12px; cursor: pointer; text-align: center; }
-    .stage-btn.active { background: #2563eb; color: #fff; border-color: #38bdf8; box-shadow: 0 0 15px rgba(37,99,235,0.4); }
-
-    .container { padding: 14px; max-width: 950px; margin: 0 auto; }
-    .card { background: #0f172a; border: 1px solid #1e293b; border-radius: 14px; padding: 16px; margin-bottom: 14px; }
-    .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 10px; }
-    @media(min-width: 600px) { .grid { grid-template-columns: repeat(4, 1fr); } }
-    .metric { background: #1e293b; padding: 12px; border-radius: 10px; text-align: center; border: 1px solid #283548; }
-    .val { font-size: 18px; font-weight: 800; color: #38bdf8; margin-top: 4px; }
-    .lbl { font-size: 11px; color: #94a3b8; font-weight: 700; text-transform: uppercase; }
-
-    .kill-pill { padding: 6px 12px; border-radius: 20px; font-size: 11px; font-weight: 800; display: inline-flex; align-items: center; gap: 6px; }
-    .kill-green { background: rgba(34,197,94,0.15); border: 1px solid #22c55e; color: #22c55e; }
-    .kill-yellow { background: rgba(234,179,8,0.2); border: 1px solid #eab308; color: #eab308; }
-    .kill-red { background: rgba(239,68,68,0.25); border: 1px solid #ef4444; color: #ef4444; }
-
-    table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }
-    th, td { padding: 9px 8px; text-align: left; border-bottom: 1px solid #1e293b; }
-    th { color: #94a3b8; font-size: 11px; }
-    .badge { padding: 3px 8px; border-radius: 6px; font-size: 10px; font-weight: bold; }
-    .btn { background: #2563eb; color: #fff; border: none; padding: 8px 14px; border-radius: 8px; font-weight: bold; cursor: pointer; }
-    .btn-green { background: #16a34a; }
-
-    #action-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 1000; justify-content: center; align-items: center; padding: 16px; }
-    .modal-content { background: #0f172a; border: 1px solid #38bdf8; border-radius: 14px; width: 100%; max-width: 550px; max-height: 85vh; display: flex; flex-direction: column; overflow: hidden; }
-    .modal-header { padding: 14px 16px; border-bottom: 1px solid #1e293b; display: flex; justify-content: space-between; align-items: center; }
-    .modal-body { padding: 16px; overflow-y: auto; font-size: 13px; line-height: 1.6; color: #cbd5e1; }
+    .glass-panel {
+      background: rgba(15, 23, 42, 0.7);
+      backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .glass-panel:hover {
+      border-color: rgba(255, 255, 255, 0.16);
+    }
+    
+    .glow-cyan { box-shadow: 0 0 25px rgba(6, 182, 212, 0.25); }
+    .glow-emerald { box-shadow: 0 0 25px rgba(16, 185, 129, 0.25); }
+    .glow-red { box-shadow: 0 0 25px rgba(239, 68, 68, 0.3); }
+    
+    .kill-pill {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.35rem 0.85rem;
+      border-radius: 9999px;
+      font-weight: 700;
+      font-size: 0.75rem;
+      letter-spacing: 0.05em;
+    }
+    .kill-green {
+      background: rgba(16, 185, 129, 0.15);
+      border: 1px solid rgba(16, 185, 129, 0.4);
+      color: #34d399;
+    }
+    .kill-yellow {
+      background: rgba(245, 158, 11, 0.15);
+      border: 1px solid rgba(245, 158, 11, 0.4);
+      color: #fbbf24;
+    }
+    .kill-red {
+      background: rgba(239, 68, 68, 0.2);
+      border: 1px solid rgba(239, 68, 68, 0.5);
+      color: #f87171;
+      animation: pulse 1.5s infinite;
+    }
   </style>
 </head>
-<body>
+<body class="min-h-screen flex flex-col justify-between selection:bg-cyan-500 selection:text-black">
 
-  <!-- Top Header with Hamburger Icon -->
-  <div class="top-bar">
-    <div style="display:flex;align-items:center;gap:12px;">
-      <button class="hamburger-btn" onclick="toggleSidebar()">☰</button>
-      <div class="brand-title">
-        <svg width="24" height="24" viewBox="0 0 100 100" fill="none">
-          <circle cx="50" cy="50" r="45" stroke="#38bdf8" stroke-width="6" fill="#0b1120"/>
-          <path d="M30 65L50 25L70 65H58L50 45L42 65H30Z" fill="#38bdf8"/>
-        </svg>
-        ANAS AI MASTER SUITE
-      </div>
-    </div>
-    <div class="badge" style="background:#15803d;color:#fff;">OWNER: AUTH</div>
-  </div>
+  <!-- Ambient Light Effects -->
+  <div class="fixed top-0 left-1/4 w-[500px] h-[350px] bg-cyan-600/10 rounded-full blur-[160px] pointer-events-none"></div>
+  <div class="fixed top-1/3 right-10 w-[450px] h-[350px] bg-emerald-600/10 rounded-full blur-[160px] pointer-events-none"></div>
 
-  <!-- Sliding Sidebar Drawer -->
-  <div id="sidebar-overlay" onclick="toggleSidebar()"></div>
-  <aside id="sidebar-drawer">
-    <div class="drawer-header">
-      <div style="font-weight:bold;color:#38bdf8;font-size:14px;">⚙️ CONTROL CENTER v12.0</div>
-      <button onclick="toggleSidebar()" style="background:none;border:none;color:#94a3b8;font-size:22px;cursor:pointer;">✕</button>
-    </div>
-    <div class="drawer-menu">
+  <!-- Header -->
+  <header class="border-b border-white/10 sticky top-0 z-40 bg-[#080b11]/90 backdrop-blur-md">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
       
-    <div class="menu-item" onclick="callMasterApi('/api/backtest', '🔬 60-Day Backtest Report')">🔬 Backtest 60D <span style="margin-left:auto;color:#f472b6;font-size:10px;">QUANT</span></div>
-    <div class="menu-item" onclick="callMasterApi('/api/setup-stats', '📈 Setup Stats (Win/Loss)')">📈 Setup Stats <span style="margin-left:auto;color:#2dd4bf;font-size:10px;">LIVE</span></div>
-    <div class="menu-item" onclick="callMasterApi('/api/health', '🩺 System Health & Jarvis Healer')">🩺 System Health (Jarvis) <span style="margin-left:auto;color:#4ade80;font-size:10px;">AUTO</span></div>
-    <div class="menu-item" onclick="window.open('/api/export-csv', '_blank')">📥 Export CSV</div>
-    <div style="font-size:10px;color:#64748b;padding:8px 4px 2px;letter-spacing:1px;">ALERTS & API TESTS</div>
-    <div class="menu-item" onclick="callMasterApi('/api/test-telegram', '✈️ Telegram Test')">✈️ Test Telegram</div>
-    <div class="menu-item" onclick="callMasterApi('/api/test-push', '🔔 Direct Push Test')">🔔 Test Push</div>
-    <div class="menu-item" onclick="callMasterApi('/api/test-dhan', '📡 Dhan API Test')">📡 Test Dhan</div>
-    <div style="font-size:10px;color:#64748b;padding:8px 4px 2px;letter-spacing:1px;">DHAN TOKEN & RESET</div>
-    <div style="padding:4px 0;">
-      <input id="dhanTokInp" placeholder="Paste Dhan Access Token" style="width:100%;padding:7px;border-radius:6px;border:1px solid #334155;background:#0b1120;color:#fff;font-size:11px;margin-bottom:4px;">
-      <button onclick="saveDhanTok()" style="width:100%;padding:7px;border-radius:6px;border:none;background:#0284c7;color:#fff;font-size:11px;font-weight:700;cursor:pointer;">💾 Save Dhan Token</button>
-    </div>
-    <div style="padding:4px 0;">
-      <button onclick="resetTestData()" style="width:100%;padding:7px;border-radius:6px;border:none;background:#b91c1c;color:#fff;font-size:11px;font-weight:700;cursor:pointer;">🧹 Reset Test Data</button>
-    </div>
-
-    <div class="menu-item" onclick="openTop10Modal()" style="border-color:#38bdf8;background:rgba(56,189,248,0.1);">
-        <span>🏆</span> <b>Top 10 Strategies (60D)</b>
-      </div>
-      <div class="menu-item" onclick="fetchLiveGeminiBrief()">
-        <span>🧠</span> Live Gemini Morning Brief
-      </div>
-      <div class="menu-item" onclick="fetchLiveGeminiAudit()">
-        <span>📊</span> Live Gemini Trade Audit
-      </div>
-      <div class="menu-item" onclick="fetchLiveFeeds()">
-        <span>📶</span> Live Market Feeds Check
-      </div>
-      <div class="menu-item" onclick="refreshDhanToken()">
-        <span>🔑</span> Dhan Token Auto-Refresh
-      </div>
-      <div class="menu-item" onclick="openPartnershipModal()">
-        <span>🤝</span> Top 4 Broker Partnerships
-      </div>
-      <div class="menu-item" onclick="openModal('🩺 Genius Shadow Recovery Rules', '<b>Rule:</b> Jab koi setup 2 loss deta hai, wo background Shadow Mode me chala jata hai.<br><b>Auto-Switch:</b> 2 virtual wins par auto-live!')">
-        <span>🩺</span> Shadow Recovery Policy
-      </div>
-      <div class="menu-item" onclick="openModal('🛡️ 60% Safe Vault Settings', '<b>Vault Policy:</b> 60% of all closed profits automatically transfer to Safe Vault.<br><b>Drawdown Armor:</b> 100% immune from open market risk.')">
-        <span>🛡️</span> 60% Safe Vault Policy
-      </div>
-      <div class="menu-item" onclick="openModal('⏱️ 3:15 PM Squareoff Shield', 'All intraday trades are forcefully closed by 3:15 PM to avoid last-minute expiry theta crush.')">
-        <span>⏱️</span> 3:15 PM Auto-Squareoff
-      </div>
-      <div style="height:1px;background:#1e293b;margin:10px 0;"></div>
-      <a href="/" class="menu-item" style="color:#38bdf8;">
-        <span>🚪</span> Switch to User Portal
-      </a>
-    </div>
-  </aside>
-
-  <!-- 2-STAGE SWITCHER TABS -->
-  <div class="stage-tabs">
-    <button id="tab-stage1" class="stage-btn" onclick="switchStage(1)">💼 STAGE 1: SaaS Users & Business</button>
-    <button id="tab-stage2" class="stage-btn active" onclick="switchStage(2)">⚡ STAGE 2: Personal Dhan Trading Desk</button>
-  </div>
-
-  <div class="container">
-
-    <!-- STAGE 1: SAAS BUSINESS -->
-    <div id="stage-1-view" style="display:none;">
-      <div class="card">
-        <div class="lbl">SaaS Business & Revenue Overview</div>
-        <div class="grid">
-          <div class="metric"><div class="lbl">Total Users</div><div id="b-users" class="val">--</div></div>
-          <div class="metric"><div class="lbl">Paid Active Orders</div><div id="b-paid" class="val">--</div></div>
-          <div class="metric"><div class="lbl">Total Revenue</div><div id="b-rev" class="val">₹0.00</div></div>
-          <div class="metric"><div class="lbl">Pending UTRs</div><div id="b-pending" class="val" style="color:#f59e0b;">0</div></div>
+      <div class="flex items-center space-x-3">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-cyan-500 to-indigo-500 flex items-center justify-center text-black font-black text-lg shadow-lg shadow-cyan-500/20">
+          ⚡
+        </div>
+        <div>
+          <div class="flex items-center space-x-2">
+            <span class="font-extrabold text-base tracking-wide text-white">STEALTH MASTER <span class="text-cyan-400">DESK</span></span>
+            <span class="text-[10px] bg-cyan-950 text-cyan-300 border border-cyan-500/30 px-2 py-0.5 rounded-full font-bold">PIN VERIFIED</span>
+          </div>
+          <p class="text-[11px] text-slate-400 font-mono hidden sm:block">Owner: eyeqom@gmail.com</p>
         </div>
       </div>
-      <div class="card">
-        <h4 style="margin:0 0 8px;color:#f59e0b;">💳 Pending UTR Approvals (Instant Activation)</h4>
-        <div style="overflow-x:auto;">
-          <table>
-            <thead>
-              <tr><th>Payment #</th><th>User ID</th><th>Plan</th><th>Amount</th><th>UTR Reference</th><th>Action</th></tr>
-            </thead>
-            <tbody id="pending-utr-body">
-              <tr><td colspan="6" style="text-align:center;color:#64748b;">No pending payments. All verified!</td></tr>
-            </tbody>
-          </table>
+
+      <div class="flex items-center space-x-3">
+        <div class="flex items-center space-x-2 bg-slate-900 border border-white/10 px-3 py-1.5 rounded-xl">
+          <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+          <span class="text-xs text-slate-300 font-medium hidden sm:inline">Shadow Health:</span>
+          <span class="text-xs text-emerald-400 font-bold">100% OK</span>
         </div>
+        <a href="/" target="_blank" class="text-xs font-semibold bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded-xl transition">
+          View Portal ↗
+        </a>
       </div>
-      <div class="card">
-        <h4 style="margin:0 0 8px;color:#38bdf8;">👥 Registered Users & Subscription Ledger</h4>
-        <div style="overflow-x:auto;">
-          <table>
-            <thead>
-              <tr><th>ID</th><th>Email</th><th>Mobile</th><th>Plan</th><th>Expires On</th><th>Referral</th></tr>
-            </thead>
-            <tbody id="users-body">
-              <tr><td colspan="6" style="text-align:center;color:#64748b;">Loading user database...</td></tr>
-            </tbody>
-          </table>
+
+    </div>
+  </header>
+
+  <!-- Main Body Content -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 py-8 flex-1 space-y-8">
+    
+    <!-- Top KPI Grid -->
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      
+      <!-- Revenue Card -->
+      <div class="glass-panel p-5 rounded-2xl border-l-4 border-l-emerald-400 glow-emerald">
+        <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total SaaS Revenue</div>
+        <div class="text-2xl sm:text-3xl font-extrabold text-emerald-400 mt-1 mono" id="kpi-revenue">₹0.00</div>
+        <div class="text-[11px] text-slate-500 mt-1">UPI: Q57363994@ybl</div>
+      </div>
+
+      <!-- Pending UTR Card -->
+      <div class="glass-panel p-5 rounded-2xl border-l-4 border-l-amber-400">
+        <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Pending UTR Approvals</div>
+        <div class="flex items-baseline space-x-2 mt-1">
+          <span class="text-2xl sm:text-3xl font-extrabold text-amber-400 mono" id="kpi-pending-utr">0</span>
+          <span class="text-xs text-amber-300/80 font-medium">Needs Action</span>
         </div>
+        <div class="text-[11px] text-slate-500 mt-1">Automated Queue</div>
       </div>
+
+      <!-- Active Users Card -->
+      <div class="glass-panel p-5 rounded-2xl border-l-4 border-l-cyan-400">
+        <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Active Subscribers</div>
+        <div class="text-2xl sm:text-3xl font-extrabold text-cyan-400 mt-1 mono" id="kpi-users">0</div>
+        <div class="text-[11px] text-slate-500 mt-1">Licensed Quant Accounts</div>
+      </div>
+
+      <!-- 60% Vault Protection Card -->
+      <div class="glass-panel p-5 rounded-2xl border-l-4 border-l-purple-500">
+        <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider">60% Capital Shield</div>
+        <div class="text-2xl sm:text-3xl font-extrabold text-purple-400 mt-1 mono" id="kpi-vault">SECURED</div>
+        <div class="text-[11px] text-slate-500 mt-1">Drawdown Vault Active</div>
+      </div>
+
     </div>
 
-    <!-- STAGE 2: PERSONAL DHAN DESK -->
-    <div id="stage-2-view">
-      <div class="card">
-        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
-          <span class="lbl">Capital Armor & Discipline Engine</span>
-          <div id="kill-indicator" class="kill-pill kill-green">
-            <span style="font-size:14px;">●</span> <span id="kill-text">NORMAL (5/5 TRADES LEFT)</span>
+    <!-- STAGE 1: SaaS Management & Quick Actions -->
+    <div class="glass-panel rounded-3xl p-6 sm:p-7 border border-white/10">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between pb-5 border-b border-white/10 gap-4">
+        <div>
+          <span class="text-xs font-bold text-cyan-400 tracking-widest uppercase">Stage 1 Cockpit</span>
+          <h2 class="text-xl font-bold text-white mt-0.5">SaaS Intelligence & AI Audits</h2>
+        </div>
+        <!-- Action Buttons -->
+        <div class="flex flex-wrap gap-2.5">
+          <button onclick="callMasterApi('/api/gemini/brief', 'Gemini AI Market Brief')" class="text-xs font-bold px-3.5 py-2 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 hover:bg-cyan-500 hover:text-black transition">
+            🤖 AI Brief
+          </button>
+          <button onclick="callMasterApi('/api/gemini/audit', 'System Risk Audit')" class="text-xs font-bold px-3.5 py-2 rounded-xl bg-purple-500/10 border border-purple-500/30 text-purple-300 hover:bg-purple-500 hover:text-white transition">
+            🛡️ AI Audit
+          </button>
+          <button onclick="fetchBusinessStats()" class="text-xs font-bold px-3.5 py-2 rounded-xl bg-white/10 border border-white/15 text-slate-200 hover:bg-white/20 transition">
+            🔄 Refresh Stats
+          </button>
+        </div>
+      </div>
+
+      <!-- Pending UTR & Users Container -->
+      <div class="mt-5">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-sm font-bold text-slate-300 uppercase tracking-wider">Pending UTR Queue & Activations</h3>
+          <span id="utr-count-badge" class="text-xs font-mono text-amber-400 bg-amber-950/60 border border-amber-500/30 px-2 py-0.5 rounded-full">0 Pending</span>
+        </div>
+        <div id="utr-list-box" class="space-y-3">
+          <div class="p-6 text-center text-xs text-slate-500 border border-dashed border-white/10 rounded-2xl">
+            Loading business telemetry...
           </div>
         </div>
-        <div class="grid">
-          <div class="metric"><div class="lbl">Trading Capital</div><div id="c-cap" class="val">₹50,000</div></div>
-          <div class="metric"><div class="lbl">Today P&L</div><div id="c-pnl" class="val">₹0.00</div></div>
-          <div class="metric"><div class="lbl">Safe Vault (60%)</div><div id="c-vlt" class="val">₹0.00</div></div>
-          <div class="metric"><div class="lbl">Win Rate</div><div id="c-win" class="val">0%</div></div>
+      </div>
+    </div>
+
+    <!-- STAGE 2: Dhan Quant Trading Desk & 10 Setups -->
+    <div class="glass-panel rounded-3xl p-6 sm:p-7 border border-emerald-500/20">
+      
+      <!-- Stage 2 Header -->
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between pb-5 border-b border-white/10 gap-4">
+        <div>
+          <span class="text-xs font-bold text-emerald-400 tracking-widest uppercase">Stage 2 Cockpit</span>
+          <h2 class="text-xl font-bold text-white mt-0.5">Dhan Quant Trading Desk (10 Setups)</h2>
+        </div>
+
+        <!-- Live Kill Switch Status Pill -->
+        <div class="flex items-center space-x-3">
+          <div id="kill-pill" class="kill-pill kill-green">
+            NORMAL (5/5 TRADES LEFT)
+          </div>
+          <button onclick="resetTestData()" class="text-xs font-semibold text-rose-400 hover:text-white bg-rose-500/10 hover:bg-rose-500 border border-rose-500/20 px-3 py-1.5 rounded-xl transition">
+            Reset Data
+          </button>
         </div>
       </div>
 
-      <div class="card">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-          <h4 style="margin:0;color:#38bdf8;font-size:13px;">🩺 Strategy Health & Shadow Auto-Recovery Matrix</h4>
-          <span class="badge" style="background:#1e293b;color:#22c55e;font-size:10px;">AUTO-SWITCH ON</span>
+      <!-- Dhan API Token Management Bar -->
+      <div class="mt-5 p-4 rounded-2xl bg-slate-900/80 border border-white/5 flex flex-col md:flex-row items-center justify-between gap-4">
+        <div class="flex items-center space-x-3 w-full md:w-auto">
+          <span class="text-xs font-bold text-cyan-400 uppercase whitespace-nowrap">Dhan API:</span>
+          <input type="password" id="dhanTokInp" placeholder="Paste updated Dhan Access Token" class="w-full md:w-80 bg-black/60 border border-white/10 rounded-xl px-3 py-1.5 text-xs text-cyan-300 font-mono focus:outline-none focus:border-cyan-400 transition">
         </div>
-        <div style="background:#1e293b;padding:8px 12px;border-radius:8px;margin-bottom:6px;display:flex;justify-content:space-between;">
-          <span><b>BANKNIFTY:</b> PDL Trap Reclaim</span><span style="color:#22c55e;font-weight:bold;">🟢 LIVE (72% Win)</span>
-        </div>
-        <div style="background:#1e293b;padding:8px 12px;border-radius:8px;margin-bottom:6px;display:flex;justify-content:space-between;">
-          <span><b>NIFTY:</b> 15m ORB Breakout</span><span style="color:#22c55e;font-weight:bold;">🟢 LIVE (68% Win)</span>
-        </div>
-        <div style="background:#1e293b;padding:8px 12px;border-radius:8px;display:flex;justify-content:space-between;">
-          <span><b>SENSEX:</b> PDL Trap Reclaim</span><span style="color:#eab308;font-weight:bold;">🟡 SHADOW MODE (1/2 Virtual Wins)</span>
+        <div class="flex items-center space-x-2 w-full md:w-auto justify-end">
+          <button onclick="saveDhanTok()" class="w-full md:w-auto text-xs font-bold px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black transition">
+            Save Token
+          </button>
+          <button onclick="callMasterApi('/api/dhan/refresh-token', 'Dhan Token Refresh')" class="w-full md:w-auto text-xs font-semibold px-3 py-2 rounded-xl bg-white/10 text-slate-300 hover:bg-white/20 transition">
+            Refresh
+          </button>
         </div>
       </div>
 
-      <div class="card">
-        <div style="display:flex;justify-content:space-between;align-items:center;">
-          <h4 style="margin:0;color:#e2e8f0;font-size:14px;">⚡ Active & Closed Trades (Dhan Bridge)</h4>
-          <button class="btn" onclick="fetchStage2State()" style="font-size:11px;padding:6px 12px;">Refresh</button>
+      <!-- 10 Live Setups Matrix -->
+      <div class="mt-6">
+        <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">10 Quant Setups Execution Grid</h3>
+        <div class="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+          <div class="p-3 rounded-xl bg-slate-900/60 border border-white/5 text-center">
+            <span class="text-[10px] text-emerald-400 font-bold">#1 NIFTY SCALP</span>
+            <div class="text-xs font-semibold text-slate-200 mt-1">Ready</div>
+          </div>
+          <div class="p-3 rounded-xl bg-slate-900/60 border border-white/5 text-center">
+            <span class="text-[10px] text-emerald-400 font-bold">#2 BNF BREAKOUT</span>
+            <div class="text-xs font-semibold text-slate-200 mt-1">Ready</div>
+          </div>
+          <div class="p-3 rounded-xl bg-slate-900/60 border border-white/5 text-center">
+            <span class="text-[10px] text-emerald-400 font-bold">#3 GAMMA BLAST</span>
+            <div class="text-xs font-semibold text-slate-200 mt-1">Standing By</div>
+          </div>
+          <div class="p-3 rounded-xl bg-slate-900/60 border border-white/5 text-center">
+            <span class="text-[10px] text-emerald-400 font-bold">#4 MEAN REVERT</span>
+            <div class="text-xs font-semibold text-slate-200 mt-1">Active</div>
+          </div>
+          <div class="p-3 rounded-xl bg-slate-900/60 border border-white/5 text-center">
+            <span class="text-[10px] text-emerald-400 font-bold">#5 VWAP MOMENTUM</span>
+            <div class="text-xs font-semibold text-slate-200 mt-1">Active</div>
+          </div>
+          <div class="p-3 rounded-xl bg-slate-900/60 border border-white/5 text-center">
+            <span class="text-[10px] text-emerald-400 font-bold">#6 9:20 STRADDLE</span>
+            <div class="text-xs font-semibold text-slate-200 mt-1">Ready</div>
+          </div>
+          <div class="p-3 rounded-xl bg-slate-900/60 border border-white/5 text-center">
+            <span class="text-[10px] text-emerald-400 font-bold">#7 OI SURGE</span>
+            <div class="text-xs font-semibold text-slate-200 mt-1">Active</div>
+          </div>
+          <div class="p-3 rounded-xl bg-slate-900/60 border border-white/5 text-center">
+            <span class="text-[10px] text-emerald-400 font-bold">#8 TRAP ENTRY</span>
+            <div class="text-xs font-semibold text-slate-200 mt-1">Ready</div>
+          </div>
+          <div class="p-3 rounded-xl bg-slate-900/60 border border-white/5 text-center">
+            <span class="text-[10px] text-emerald-400 font-bold">#9 FINNIFTY ZERO</span>
+            <div class="text-xs font-semibold text-slate-200 mt-1">Standing By</div>
+          </div>
+          <div class="p-3 rounded-xl bg-slate-900/60 border border-white/5 text-center">
+            <span class="text-[10px] text-emerald-400 font-bold">#10 EXPIRY TREND</span>
+            <div class="text-xs font-semibold text-slate-200 mt-1">Ready</div>
+          </div>
         </div>
-        <div style="overflow-x:auto;">
-          <table>
-            <thead>
-              <tr><th>Symbol</th><th>Side</th><th>Entry</th><th>Trail SL</th><th>Target</th><th>P&L</th><th>Status</th></tr>
+      </div>
+
+      <!-- Live Dhan Trades Table -->
+      <div class="mt-6">
+        <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Today's Executed Quant Trades</h3>
+        <div class="overflow-x-auto rounded-2xl border border-white/10">
+          <table class="w-full text-left text-xs text-slate-300">
+            <thead class="bg-slate-900/80 text-[11px] text-slate-400 uppercase tracking-wider border-b border-white/10">
+              <tr>
+                <th class="px-4 py-3">Symbol</th>
+                <th class="px-4 py-3">Side</th>
+                <th class="px-4 py-3">Entry</th>
+                <th class="px-4 py-3">Trail SL</th>
+                <th class="px-4 py-3">Target</th>
+                <th class="px-4 py-3">PnL</th>
+                <th class="px-4 py-3">Status</th>
+              </tr>
             </thead>
-            <tbody id="trades-body">
-              <tr><td colspan="7" style="text-align:center;color:#64748b;">Loading trades...</td></tr>
+            <tbody id="trades-body" class="divide-y divide-white/5 font-mono">
+              <tr>
+                <td colspan="7" class="px-4 py-6 text-center text-slate-500 font-sans">
+                  No trades executed today
+                </td>
+              </tr>
             </tbody>
           </table>
         </div>
       </div>
+
     </div>
 
-  </div>
+  </main>
 
-  <!-- Action Modal -->
-  <div id="action-modal">
-    <div class="modal-content">
-      <div class="modal-header">
-        <b id="modal-title" style="color:#38bdf8;">Modal Title</b>
-        <button onclick="closeModal()" style="background:none;border:none;color:#94a3b8;font-size:18px;cursor:pointer;">✕</button>
+  <!-- Universal Modal Popup for AI Brief & API Actions -->
+  <div id="apiModal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="glass-panel w-full max-w-2xl rounded-3xl p-6 border border-cyan-500/30 glow-cyan">
+      <div class="flex items-center justify-between pb-3 border-b border-white/10">
+        <h3 id="modalTitle" class="text-base font-bold text-cyan-400">Response</h3>
+        <button onclick="closeModal()" class="text-slate-400 hover:text-white font-bold text-lg px-2">✕</button>
       </div>
-      <div class="modal-body" id="modal-body-text">Content...</div>
+      <div id="modalContent" class="mt-4 max-h-[65vh] overflow-y-auto"></div>
+      <div class="mt-5 flex justify-end">
+        <button onclick="closeModal()" class="text-xs font-bold px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl transition">
+          Close Window
+        </button>
+      </div>
     </div>
   </div>
 
+  <!-- Footer -->
+  <footer class="border-t border-white/5 py-5 text-center text-xs text-slate-500">
+    <div>Anas AI Stealth Master Desk • Authorized Access Only • PIN: 0401</div>
+  </footer>
+
+  <!-- Master Control Scripts -->
   <script>
-    const MASTER_PIN = '0401';
+    const urlParams = new URLSearchParams(window.location.search);
+    const MASTER_PIN = urlParams.get('pin') || '0401';
 
-    function toggleSidebar() {
-      const drawer = document.getElementById('sidebar-drawer');
-      const overlay = document.getElementById('sidebar-overlay');
-      const isOpen = drawer.classList.contains('open');
-      if (isOpen) {
-        drawer.classList.remove('open');
-        overlay.style.display = 'none';
-      } else {
-        drawer.classList.add('open');
-        overlay.style.display = 'block';
-      }
-    }
-
-    function openModal(title, htmlContent) {
-      document.getElementById('modal-title').innerHTML = title;
-      document.getElementById('modal-body-text').innerHTML = htmlContent;
-      document.getElementById('action-modal').style.display = 'flex';
-      toggleSidebar();
+    function openModal(title, html) {
+      document.getElementById('modalTitle').innerText = title;
+      document.getElementById('modalContent').innerHTML = html;
+      document.getElementById('apiModal').classList.remove('hidden');
     }
 
     function closeModal() {
-      document.getElementById('action-modal').style.display = 'none';
+      document.getElementById('apiModal').classList.add('hidden');
     }
 
-    function switchStage(stageNum) {
-      const s1 = document.getElementById('stage-1-view');
-      const s2 = document.getElementById('stage-2-view');
-      const t1 = document.getElementById('tab-stage1');
-      const t2 = document.getElementById('tab-stage2');
-      if (stageNum === 1) {
-        s1.style.display = 'block'; s2.style.display = 'none';
-        t1.className = 'stage-btn active'; t2.className = 'stage-btn';
-        fetchStage1Stats();
-      } else {
-        s1.style.display = 'none'; s2.style.display = 'block';
-        t1.className = 'stage-btn'; t2.className = 'stage-btn active';
-        fetchStage2State();
+    async function callMasterApi(url, title) {
+      try {
+        const r = await fetch(url);
+        const d = await r.json();
+        openModal(title, '<pre class="text-xs text-slate-300 font-mono bg-black/50 p-4 rounded-xl overflow-x-auto whitespace-pre-wrap leading-relaxed">' + JSON.stringify(d, null, 2) + '</pre>');
+      } catch(e) {
+        openModal(title, '<div class="text-rose-400 text-xs font-mono">Error: ' + e + '</div>');
       }
     }
 
-    async function fetchLiveGeminiBrief() {
-      openModal('🧠 Live Gemini Morning Brief', '<div style="color:#38bdf8;">AI Market Analysis load ho raha hai...</div>');
+    async function saveDhanTok() {
+      const tok = document.getElementById('dhanTokInp').value;
+      if (!tok) { alert('Please enter a valid Dhan token'); return; }
       try {
-        const res = await fetch('/api/gemini/brief');
-        const d = await res.json();
-        document.getElementById('modal-body-text').innerHTML = d.data || d.fallback;
-      } catch(e) { document.getElementById('modal-body-text').innerHTML = 'Error: ' + e.message; }
+        const r = await fetch('/api/save-token', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({token: tok, pin: MASTER_PIN})
+        });
+        const d = await r.json();
+        alert(d.msg || 'Dhan Token Updated Successfully');
+      } catch(e) { alert('Error: ' + e); }
     }
 
-    async function fetchLiveGeminiAudit() {
-      openModal('📊 Live Gemini Trade Audit', '<div style="color:#38bdf8;">Audit load ho raha hai...</div>');
+    async function resetTestData() {
+      if(!confirm('Reset test capital & kill switch?')) return;
       try {
-        const res = await fetch('/api/gemini/audit');
-        const d = await res.json();
-        document.getElementById('modal-body-text').innerHTML = d.data || d.fallback;
-      } catch(e) { document.getElementById('modal-body-text').innerHTML = 'Error: ' + e.message; }
+        const r = await fetch('/api/reset-data', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({pin: MASTER_PIN})
+        });
+        const d = await r.json();
+        alert(d.msg || 'Test Data Reset Complete');
+        if (typeof fetchStage2State === 'function') fetchStage2State();
+      } catch(e) { alert('Error: ' + e); }
     }
 
-    async function fetchLiveFeeds() {
-      openModal('📶 Live Market Feeds Check', '<div style="color:#38bdf8;">Feeds fetch ho rahe hain...</div>');
-      try {
-        const res = await fetch('/api/feeds');
-        const d = await res.json();
-        let fHtml = '';
-        for (let k in d.feeds) {
-          let s = d.feeds[k];
-          fHtml += '<div style="background:#1e293b;padding:10px;border-radius:8px;margin-bottom:8px;"><b>' + k + ':</b> Spot=' + s.spot + ' | PDH=' + s.pdh + ' | PDL=' + s.pdl + ' | Candles=' + s.candles + '</div>';
-        }
-        document.getElementById('modal-body-text').innerHTML = fHtml;
-      } catch(e) { document.getElementById('modal-body-text').innerHTML = 'Feed Error: ' + e.message; }
-    }
-
-    async function refreshDhanToken() {
-      openModal('🔑 Dhan Auto-Token Status', '<div style="color:#38bdf8;">Token verify ho raha hai...</div>');
-      try {
-        const res = await fetch('/api/dhan/refresh-token');
-        const d = await res.json();
-        document.getElementById('modal-body-text').innerHTML = '<b>Status:</b> ' + d.msg + '<br><small style="color:#22c55e;">Auto-TOTP Engine Active</small>';
-      } catch(e) { document.getElementById('modal-body-text').innerHTML = 'Dhan Token Active.'; }
-    }
-
-    function openPartnershipModal() {
-      openModal('🤝 Top 4 Broker Partnerships', '1. <b>Dhan:</b> <a href="https://join.dhan.co/?invite=GOLDV15912" target="_blank" style="color:#38bdf8;">join.dhan.co (Code: GOLDV15912)</a><br><br>2. <b>Angel One:</b> Permanent Brokerage Link Active<br><br>3. <b>Upstox:</b> Instant Pro Account Setup Active<br><br>4. <b>Fyers:</b> API Enabled Trading Partner');
-    }
-
-    function openTop10Modal() {
-      openModal('🏆 Top 10 Strategies (60D Leaderboard)', '<div style="font-size:12px;line-height:1.8;"><b>1. Expiry Gamma Theta Scalp:</b> Win 74% | PF 2.80 | +₹38,500<br><b>2. PDH/PDL Trap Rejection (SMC):</b> Win 72% | PF 2.65 | +₹34,120<br><b>3. RSI Divergence + OrderBlock:</b> Win 70% | PF 2.50 | +₹31,200<br><b>4. 15m ORB Breakout:</b> Win 68% | PF 2.34 | +₹28,450<br><b>5. ATR Trailing Trend Runner:</b> Win 65% | PF 2.40 | +₹27,800<br><b>6. SuperTrend 7/3 Momentum:</b> Win 66% | PF 2.25 | +₹24,900<br><b>7. CPR Breakout & Retest:</b> Win 67% | PF 2.20 | +₹23,100<br><b>8. EMA 9/21 Dynamic Pullback:</b> Win 64% | PF 2.10 | +₹21,800<br><b>9. Bollinger Squeeze Expansion:</b> Win 63% | PF 2.05 | +₹19,600<br><b>10. VWAP Mean Reversion Scalp:</b> Win 61% | PF 1.95 | +₹17,400</div>');
-    }
-
-    async function fetchStage1Stats() {
+    async function fetchBusinessStats() {
       try {
         const res = await fetch('/api/master/business-stats?pin=' + MASTER_PIN);
-        const d = await res.json();
-        if (!d.ok) return;
-        document.getElementById('b-users').innerText = d.total_users;
-        document.getElementById('b-paid').innerText = d.paid_orders;
-        document.getElementById('b-rev').innerText = '₹' + (d.total_revenue || 0).toLocaleString();
-        document.getElementById('b-pending').innerText = d.pending_utrs;
-        if (d.users && d.users.length) {
-          document.getElementById('users-body').innerHTML = d.users.map(u => '<tr><td>#' + u.id + '</td><td><b>' + u.email + '</b></td><td>' + u.mobile + '</td><td><span class="badge" style="background:#15803d;">' + u.plan + '</span></td><td>' + u.expires + '</td><td><code>' + (u.ref||'--') + '</code></td></tr>').join('');
+        const data = await res.json();
+        
+        if (data.total_revenue !== undefined) {
+          document.getElementById('kpi-revenue').innerText = '₹' + Number(data.total_revenue).toLocaleString('en-IN');
         }
-      } catch(e) {}
+        if (data.active_users !== undefined) {
+          document.getElementById('kpi-users').innerText = data.active_users;
+        }
+
+        const pending = data.pending_utrs || [];
+        document.getElementById('kpi-pending-utr').innerText = pending.length;
+        document.getElementById('utr-count-badge').innerText = pending.length + ' Pending';
+
+        const listContainer = document.getElementById('utr-list-box');
+        if (pending.length === 0) {
+          listContainer.innerHTML = '<div class="p-5 text-center text-xs text-slate-500 bg-slate-900/40 rounded-2xl border border-white/5">✅ No pending UTR verifications right now. All clear!</div>';
+        } else {
+          listContainer.innerHTML = pending.map(u => `
+            <div class="glass-panel p-4 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 border border-amber-500/30">
+              <div>
+                <div class="flex items-center space-x-2">
+                  <span class="font-bold text-white text-xs">${u.name || 'Trader'}</span>
+                  <span class="text-[10px] text-cyan-400 font-mono bg-cyan-950/80 px-2 py-0.5 rounded-md border border-cyan-500/20">${u.plan || 'Plan'}</span>
+                </div>
+                <div class="text-xs text-slate-400 mt-1 font-mono">
+                  UTR: <strong class="text-amber-400">${u.utr || u.utr_number}</strong> • Contact: ${u.email || u.phone || 'N/A'}
+                </div>
+              </div>
+              <div class="flex items-center space-x-2">
+                <button onclick="callMasterApi('/api/master/approve-utr?pin=${MASTER_PIN}&utr=${encodeURIComponent(u.utr || u.utr_number)}', 'Approve UTR')" class="text-xs font-bold px-3 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-black rounded-lg transition shadow">
+                  ✓ Approve
+                </button>
+                <button onclick="callMasterApi('/api/master/reject-utr?pin=${MASTER_PIN}&utr=${encodeURIComponent(u.utr || u.utr_number)}', 'Reject UTR')" class="text-xs font-semibold px-2.5 py-1.5 bg-rose-500/20 text-rose-300 hover:bg-rose-500 hover:text-white rounded-lg transition">
+                  ✕ Reject
+                </button>
+              </div>
+            </div>
+          `).join('');
+        }
+      } catch(e) { console.error(e); }
     }
 
     async function fetchStage2State() {
       try {
         const res = await fetch('/api/state');
         const d = await res.json();
-        document.getElementById('c-cap').innerText = '₹' + (d.capital || 0).toLocaleString();
-        document.getElementById('c-pnl').innerText = '₹' + (d.today_pnl || 0).toLocaleString();
-        document.getElementById('c-vlt').innerText = '₹' + (d.vault || 0).toLocaleString();
-        document.getElementById('c-win').innerText = (d.win_rate || 0) + '%';
-        const pill = document.getElementById('kill-indicator');
-        const txt = document.getElementById('kill-text');
-        const totalTrades = d.total || (d.trades ? d.trades.length : 0);
-        const tradesLeft = Math.max(0, 5 - totalTrades);
-        if (d.kill_switch) {
+        
+        const pill = document.getElementById('kill-pill');
+        const tradesLeft = d.trades_left !== undefined ? d.trades_left : 5;
+        
+        if (d.kill_switch === 'RED') {
           pill.className = 'kill-pill kill-red';
-          txt.innerText = 'KILL SWITCH LOCKED (Kal auto-unlock hoga)';
-        } else if (tradesLeft <= 1 || (d.today_pnl < -1500)) {
+          pill.innerText = '🔴 RED KILL SWITCH ACTIVE';
+        } else if (d.kill_switch === 'YELLOW') {
           pill.className = 'kill-pill kill-yellow';
-          txt.innerText = 'ARMED WARNING (' + tradesLeft + ' Trade Left)';
+          pill.innerText = '⚠️ YELLOW ALERT (TRAIL SL)';
         } else {
           pill.className = 'kill-pill kill-green';
-          txt.innerText = 'NORMAL (' + tradesLeft + '/5 TRADES LEFT)';
+          pill.innerText = 'NORMAL (' + tradesLeft + '/5 TRADES LEFT)';
         }
+
+        const tradesBody = document.getElementById('trades-body');
         if (d.trades && d.trades.length) {
-          document.getElementById('trades-body').innerHTML = d.trades.map(t => '<tr><td><b>' + t.symbol + '</b></td><td style="color:' + (t.side.includes('CE')?'#22c55e':'#ef4444') + '">' + t.side + '</td><td>₹' + t.entry + '</td><td>₹' + t.trail_sl + '</td><td>₹' + t.target + '</td><td style="font-weight:bold;color:' + (t.pnl>=0?'#22c55e':'#ef4444') + '">₹' + t.pnl + '</td><td><span class="badge" style="background:#334155;">' + t.status + '</span></td></tr>').join('');
+          tradesBody.innerHTML = d.trades.map(t => `
+            <tr class="hover:bg-white/5 transition">
+              <td class="px-4 py-3 font-bold text-white">${t.symbol}</td>
+              <td class="px-4 py-3 font-semibold ${t.side && t.side.includes('CE') ? 'text-emerald-400' : 'text-rose-400'}">${t.side}</td>
+              <td class="px-4 py-3">₹${t.entry}</td>
+              <td class="px-4 py-3 text-slate-400">₹${t.trail_sl}</td>
+              <td class="px-4 py-3 text-cyan-400">₹${t.target}</td>
+              <td class="px-4 py-3 font-bold ${t.pnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}">₹${t.pnl}</td>
+              <td class="px-4 py-3"><span class="px-2 py-0.5 rounded-full text-[10px] bg-slate-800 border border-white/10 text-slate-300">${t.status}</span></td>
+            </tr>
+          `).join('');
         } else {
-          document.getElementById('trades-body').innerHTML = '<tr><td colspan="7" style="text-align:center;color:#64748b;">No trades executed today</td></tr>';
+          tradesBody.innerHTML = '<tr><td colspan="7" class="px-4 py-6 text-center text-slate-500 font-sans">No trades executed today</td></tr>';
         }
       } catch(e) {}
     }
 
+    // Initial triggers
+    fetchBusinessStats();
     fetchStage2State();
     setInterval(fetchStage2State, 5000);
-  
-async function callMasterApi(url, title) {
-  try {
-    const r = await fetch(url);
-    const d = await r.json();
-    openModal(title, '<pre style="white-space:pre-wrap;font-size:11px;color:#e2e8f0;">' + JSON.stringify(d, null, 2) + '</pre>');
-  } catch(e) { openModal(title, 'Error: ' + e); }
-}
-async function saveDhanTok() {
-  const tok = document.getElementById('dhanTokInp').value;
-  const r = await fetch('/api/save-token', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({token: tok, pin: MASTER_PIN})});
-  const d = await r.json();
-  alert(d.msg || 'Done');
-}
-async function resetTestData() {
-  if(!confirm('Reset test capital & kill switch?')) return;
-  const r = await fetch('/api/reset-data', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({pin: MASTER_PIN})});
-  const d = await r.json();
-  alert(d.msg || 'Done');
-  if (typeof fetchStage2State === 'function') fetchStage2State();
-}
-
-</script>
+  </script>
 </body>
 </html>
