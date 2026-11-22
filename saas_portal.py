@@ -63,7 +63,7 @@ PORTAL_HTML = """<!DOCTYPE html>
   <!-- MAIN BODY VIEW CONTAINER -->
   <main class="max-w-5xl mx-auto px-4 py-8 flex-1 w-full">
 
-    <!-- 1. SIGN IN VIEW -->
+    <!-- 1. SIGN IN VIEW (WITH FORGOT PASSWORD) -->
     <div id="view-signin" class="max-w-md mx-auto glass-card rounded-3xl p-6 sm:p-8 border border-white/10 glow-cyan">
       <div class="text-center mb-6">
         <span class="text-xs font-bold text-cyan-400 tracking-widest uppercase">Authorized Access</span>
@@ -76,7 +76,10 @@ PORTAL_HTML = """<!DOCTYPE html>
           <input type="email" id="si_email" placeholder="trader@domain.com" class="w-full bg-slate-900 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 transition">
         </div>
         <div>
-          <label class="block text-xs font-semibold text-slate-300 mb-1">Password</label>
+          <div class="flex items-center justify-between mb-1">
+            <label class="text-xs font-semibold text-slate-300">Password</label>
+            <button onclick="showView('view-forgot')" class="text-[11px] text-cyan-400 hover:underline font-semibold">Forgot Password?</button>
+          </div>
           <input type="password" id="si_pwd" placeholder="••••••••" class="w-full bg-slate-900 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 transition">
         </div>
         <button onclick="doSignIn(false)" class="w-full py-3 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-extrabold text-xs tracking-wider uppercase transition shadow">
@@ -88,7 +91,28 @@ PORTAL_HTML = """<!DOCTYPE html>
       </div>
     </div>
 
-    <!-- 2. SIGN UP VIEW (WITH MANDATORY BROKER & INVITE CODE) -->
+    <!-- 2. FORGOT PASSWORD VIEW -->
+    <div id="view-forgot" class="hidden max-w-md mx-auto glass-card rounded-3xl p-6 sm:p-8 border border-white/10 glow-cyan">
+      <div class="text-center mb-6">
+        <span class="text-xs font-bold text-cyan-400 tracking-widest uppercase">Account Recovery</span>
+        <h2 class="text-2xl font-bold text-white mt-1">Reset Password</h2>
+        <p class="text-xs text-slate-400 mt-1">Enter registered email to receive reset instructions</p>
+      </div>
+      <div class="space-y-4">
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1">Registered Email Address</label>
+          <input type="email" id="fg_email" placeholder="trader@domain.com" class="w-full bg-slate-900 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 transition">
+        </div>
+        <button onclick="doForgotPassword()" class="w-full py-3 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-extrabold text-xs tracking-wider uppercase transition shadow">
+          Send Password Reset Link ➔
+        </button>
+        <div class="text-center text-xs text-slate-400 pt-2">
+          Remember credentials? <button onclick="showView('view-signin')" class="text-cyan-400 font-bold hover:underline">Back to Sign In</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3. SIGN UP VIEW (BROAD BROKER SUPPORT + 4 PARTNER TILES) -->
     <div id="view-signup" class="hidden max-w-xl mx-auto glass-card rounded-3xl p-6 sm:p-8 border border-white/10">
       <div class="text-center mb-6">
         <span class="text-xs font-bold text-emerald-400 tracking-widest uppercase">Invite-Only Onboarding</span>
@@ -119,7 +143,7 @@ PORTAL_HTML = """<!DOCTYPE html>
           </div>
         </div>
 
-        <!-- BROKER VERIFICATION SECTION -->
+        <!-- BROKER VERIFICATION SECTION (ALL BROKERS SUPPORTED) -->
         <div class="p-4 rounded-2xl bg-black/40 border border-cyan-500/20">
           <div class="flex items-center justify-between mb-2">
             <span class="text-xs font-bold text-cyan-400 uppercase">Trading Platform KYC (Mandatory)</span>
@@ -127,12 +151,21 @@ PORTAL_HTML = """<!DOCTYPE html>
           </div>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label class="block text-[11px] text-slate-400 mb-1">Select Active Broker</label>
+              <label class="block text-[11px] text-slate-400 mb-1">Select Your Trading Broker</label>
               <select id="su_broker" class="w-full bg-slate-900 border border-white/10 rounded-xl px-3 py-2 text-xs text-white font-medium focus:outline-none focus:border-cyan-400">
                 <option value="DHAN">Dhan (Recommended & Fastest)</option>
+                <option value="ZERODHA">Zerodha (Kite Connect API)</option>
                 <option value="ANGEL">Angel One (SmartAPI)</option>
                 <option value="FYERS">Fyers (API v3)</option>
                 <option value="UPSTOX">Upstox (Plus API)</option>
+                <option value="GROWW">Groww</option>
+                <option value="KOTAK">Kotak Neo (Trade API)</option>
+                <option value="SHOONYA">Shoonya / Finvasia (Zero Brokerage)</option>
+                <option value="ALICEBLUE">Alice Blue (ANT API)</option>
+                <option value="5PAISA">5paisa (Developer API)</option>
+                <option value="ICICI">ICICI Direct (Breeze API)</option>
+                <option value="MOTILAL">Motilal Oswal (MO API)</option>
+                <option value="OTHER">Other Broker (Custom API Bridge)</option>
               </select>
             </div>
             <div>
@@ -141,7 +174,7 @@ PORTAL_HTML = """<!DOCTYPE html>
             </div>
           </div>
 
-          <!-- Free Demat Referral Links for New Traders -->
+          <!-- STRICTLY 4 PARTNER DEMAT LINKS (FOR USERS WITHOUT ACCOUNT) -->
           <div class="mt-3 pt-3 border-t border-white/5">
             <span class="text-[10px] font-semibold text-amber-400 uppercase block mb-1.5">Don't have a supported Demat account? Open Free:</span>
             <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-[10px] font-bold">
@@ -180,7 +213,7 @@ PORTAL_HTML = """<!DOCTYPE html>
       </div>
     </div>
 
-    <!-- 3. SUBSCRIPTION GATE VIEW (WHEN PLAN == 'PENDING') -->
+    <!-- 4. SUBSCRIPTION GATE VIEW (WHEN PLAN == 'PENDING') -->
     <div id="view-gated-checkout" class="hidden max-w-xl mx-auto glass-card rounded-3xl p-6 sm:p-8 border border-amber-500/30 glow-cyan">
       <div class="text-center mb-6">
         <span class="text-xs font-bold text-amber-400 tracking-widest uppercase">Account Verification Required</span>
@@ -237,7 +270,7 @@ PORTAL_HTML = """<!DOCTYPE html>
       </div>
     </div>
 
-    <!-- 4. PURE & CLEAN TRADER DASHBOARD (POST-APPROVAL ONLY) -->
+    <!-- 5. PURE & CLEAN TRADER DASHBOARD (POST-APPROVAL ONLY) -->
     <div id="view-trader" class="hidden space-y-6">
       
       <!-- Top Trader Info Bar -->
@@ -442,10 +475,12 @@ PORTAL_HTML = """<!DOCTYPE html>
     }
 
     function showView(viewId) {
-      ['view-signin', 'view-signup', 'view-gated-checkout', 'view-trader'].forEach(id => {
-        document.getElementById(id).classList.add('hidden');
+      ['view-signin', 'view-signup', 'view-forgot', 'view-gated-checkout', 'view-trader'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.add('hidden');
       });
-      document.getElementById(viewId).classList.remove('hidden');
+      const target = document.getElementById(viewId);
+      if (target) target.classList.remove('hidden');
     }
 
     function toggleSidebar() {
@@ -489,6 +524,22 @@ PORTAL_HTML = """<!DOCTYPE html>
 
         renderUserInterface();
       } catch(e) { showAlert('Connection error: ' + e); }
+    }
+
+    // FORGOT PASSWORD
+    async function doForgotPassword() {
+      const email = document.getElementById('fg_email').value.trim();
+      if (!email) { showAlert('Registered email enter karein.'); return; }
+
+      try {
+        const res = await fetch('/api/forgot', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({email})
+        });
+        const d = await res.json();
+        showAlert(d.msg || 'Password reset link sent to your email!', !d.ok);
+      } catch(e) { showAlert('Error: ' + e); }
     }
 
     // SIGN UP
