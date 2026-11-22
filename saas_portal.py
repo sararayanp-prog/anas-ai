@@ -1,551 +1,652 @@
-import os, secrets, hashlib, hmac, base64, struct, time
-from datetime import datetime, timedelta
+import os
 from flask import Blueprint, request, jsonify, render_template_string
-import db
-import requests
 
-saas_bp = Blueprint("saas_portal_v13", __name__)
-
-UPI_ID = os.getenv("MERCHANT_UPI_ID", "Q57363994@ybl")
-MASTER_PIN = os.getenv("ADMIN_PIN", "0401")
-
-# RFC 6238 Pure Python TOTP Generator (Zero External Dependency)
-def generate_totp(secret_key: str) -> str:
-    try:
-        clean_secret = secret_key.replace(" ", "").upper().strip()
-        key = base64.b32decode(clean_secret, casefold=True)
-        counter = int(time.time() // 30)
-        msg = struct.pack(">Q", counter)
-        h = hmac.new(key, msg, hashlib.sha1).digest()
-        offset = h[-1] & 0x0F
-        code = struct.unpack(">I", h[offset:offset+4])[0] & 0x7FFFFFFF
-        return f"{code % 1000000:06d}"
-    except Exception as e:
-        return ""
-
-TOP_10_STRATEGIES = [
-    {"id": "anas_hybrid", "name": "ANAS Institutional Hybrid (DEFAULT)", "win_rate": "78.4%", "pf": "2.85", "tag": "⭐ Recommended for Beginners (Auto Capital Shield)"},
-    {"id": "pdl_trap", "name": "PDL Liquidity Trap Reclaim", "win_rate": "74.2%", "pf": "2.61", "tag": "High Momentum Reversals"},
-    {"id": "pdh_reject", "name": "PDH Institutional Rejection Scalp", "win_rate": "71.8%", "pf": "2.44", "tag": "Expiry Peak Scalping"},
-    {"id": "orb_15m", "name": "15-Min Opening Range Breakout (ORB)", "win_rate": "69.5%", "pf": "2.30", "tag": "Morning Trend Surfing"},
-    {"id": "vwap_pullback", "name": "Institutional VWAP + EMA Pullback", "win_rate": "68.2%", "pf": "2.18", "tag": "Trend Riding Safe Mode"},
-    {"id": "theta_decay", "name": "Expiry Special Zero-to-Hero Scalp", "win_rate": "66.9%", "pf": "2.40", "tag": "Option Buyer Volatility"},
-    {"id": "adx_turbo", "name": "ADX > 25 Volatility Turbo Scalper", "win_rate": "65.4%", "pf": "2.05", "tag": "Quick 1:2 Targets"},
-    {"id": "fair_value_gap", "name": "SMC Fair Value Gap (FVG) Fill", "win_rate": "64.8%", "pf": "2.12", "tag": "Smart Money Tracking"},
-    {"id": "orderblock_sniper", "name": "H4/15m High-Probability Order Block", "win_rate": "63.7%", "pf": "1.98", "tag": "Positional Quality Setup"},
-    {"id": "stochastic_reversal", "name": "Multi-Timeframe Mean Reversion", "win_rate": "62.1%", "pf": "1.89", "tag": "Range-Bound Sideways Guard"}
-]
+saas_portal_bp = Blueprint('saas_portal', __name__)
 
 PORTAL_HTML = """<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>ANAS AI QUANT — Institutional Trading SaaS</title>
-  <link rel="manifest" href="/manifest.json">
-  <meta name="theme-color" content="#070d19">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Anas AI | Private Quantitative Club</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
   <style>
-    * { box-sizing: border-box; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; margin: 0; padding: 0; }
-    body { background: #070d19; color: #e2e8f0; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 16px; }
-    
-    .navbar { width: 100%; max-width: 480px; display: flex; justify-content: space-between; align-items: center; padding: 12px 0; margin-bottom: 12px; }
-    .nav-brand { font-size: 20px; font-weight: 800; color: #38bdf8; display: flex; align-items: center; gap: 8px; }
-    .hamburger { background: #1e293b; border: 1px solid #334155; color: #38bdf8; font-size: 18px; border-radius: 8px; padding: 6px 14px; cursor: pointer; }
-    
-    .sidebar { position: fixed; top: 0; left: -290px; width: 290px; height: 100vh; background: #0b1329; border-right: 1px solid #1e293b; z-index: 1000; transition: left 0.3s ease; padding: 24px; display: flex; flex-direction: column; gap: 14px; box-shadow: 10px 0 30px rgba(0,0,0,0.7); }
-    .sidebar.open { left: 0; }
-    .sidebar-overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.6); z-index: 999; }
-    .sidebar-overlay.open { display: block; }
-    .sidebar-close { align-self: flex-end; background: none; border: none; color: #94a3b8; font-size: 24px; cursor: pointer; }
-    .sidebar-link { color: #cbd5e1; text-decoration: none; padding: 12px 14px; border-radius: 8px; font-weight: 600; font-size: 14px; background: #1e293b; display: flex; align-items: center; gap: 10px; }
-    
-    .card { width: 100%; max-width: 480px; background: #0f172a; border: 1px solid #1e293b; border-radius: 20px; padding: 22px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.7); }
-    .logo-header { text-align: center; margin-bottom: 16px; }
-    .logo-header h1 { font-size: 22px; font-weight: 800; color: #38bdf8; }
-    .logo-header p { font-size: 11px; color: #94a3b8; margin-top: 4px; text-transform: uppercase; letter-spacing: 1px; }
-    
-    .warn-box { background: rgba(127,29,29,0.3); border: 1px solid #ef4444; border-radius: 12px; padding: 12px; font-size: 12px; line-height: 1.5; color: #fecaca; margin-bottom: 16px; }
-    .warn-box strong { color: #f87171; display: block; margin-bottom: 2px; }
-    
-    .tabs { display: flex; gap: 8px; margin-bottom: 16px; }
-    .tab { flex: 1; padding: 10px; border: 1px solid #334155; background: #1e293b; color: #94a3b8; border-radius: 10px; cursor: pointer; font-weight: 700; text-align: center; font-size: 13px; }
-    .tab.active { background: #2563eb; color: #ffffff; border-color: #3b82f6; }
-    
-    .alert { padding: 12px; border-radius: 10px; font-size: 13px; margin-bottom: 14px; display: none; line-height: 1.4; word-break: break-word; }
-    .alert-err { background: rgba(239, 68, 68, 0.2); border: 1px solid #ef4444; color: #fca5a5; }
-    .alert-ok { background: rgba(34, 197, 94, 0.2); border: 1px solid #22c55e; color: #86efac; }
-    
-    .input-grp { margin-bottom: 14px; }
-    .input-grp label { display: block; font-size: 12px; color: #94a3b8; font-weight: 600; margin-bottom: 6px; }
-    .input-grp input, .input-grp select { width: 100%; padding: 12px; background: #1e293b; border: 1px solid #334155; border-radius: 10px; color: #ffffff; font-size: 13px; outline: none; }
-    
-    .btn { width: 100%; padding: 12px; border: none; border-radius: 10px; font-weight: 700; font-size: 14px; cursor: pointer; text-align: center; }
-    .btn-primary { background: #2563eb; color: #ffffff; }
-    .btn-install { background: linear-gradient(135deg, #10b981, #059669); color: #fff; margin-bottom: 14px; display: none; }
-    
-    .badge { padding: 4px 8px; border-radius: 6px; font-size: 10px; font-weight: 800; display: inline-block; }
-    .badge-auto { background: #064e3b; color: #6ee7b7; border: 1px solid #059669; }
-    
-    .support-row { display: flex; gap: 10px; margin-top: 16px; }
-    .support-btn { flex: 1; padding: 10px; border-radius: 10px; font-size: 12px; font-weight: 700; text-align: center; text-decoration: none; color: #fff; display: flex; align-items: center; justify-content: center; }
-    .btn-wa { background: #15803d; }
-    .btn-tg { background: #0284c7; }
+    body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #07090e; color: #f1f5f9; overflow-x: hidden; }
+    .mono { font-family: 'JetBrains Mono', monospace; }
+    .glass-card { background: rgba(15, 23, 42, 0.75); backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.08); }
+    .glow-cyan { box-shadow: 0 0 25px rgba(6, 182, 212, 0.25); }
+    .glow-emerald { box-shadow: 0 0 25px rgba(16, 185, 129, 0.25); }
+    .sidebar-transition { transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
   </style>
 </head>
-<body>
+<body class="min-h-screen flex flex-col justify-between selection:bg-cyan-500 selection:text-black">
 
-  <div class="navbar">
-    <div class="nav-brand">⚡ ANAS AI QUANT</div>
-    <button class="hamburger" onclick="toggleSidebar()">☰ Menu</button>
-  </div>
+  <!-- Ambient Light -->
+  <div class="fixed top-[-10%] left-[-10%] w-[450px] h-[450px] bg-cyan-600/15 rounded-full blur-[140px] pointer-events-none"></div>
+  <div class="fixed bottom-[-10%] right-[-10%] w-[450px] h-[450px] bg-emerald-600/15 rounded-full blur-[140px] pointer-events-none"></div>
 
-  <div class="sidebar-overlay" id="overlay" onclick="toggleSidebar()"></div>
-  <div class="sidebar" id="sidebar">
-    <button class="sidebar-close" onclick="toggleSidebar()">✕</button>
-    <div style="font-weight:800; color:#38bdf8; font-size:18px;">ANAS QUANT ECOSYSTEM</div>
-    <a href="#" class="sidebar-link" onclick="toggleSidebar(); switchTab('signin')">🔑 Trader Login</a>
-    <a href="#" class="sidebar-link" onclick="toggleSidebar(); switchTab('signup')">📝 Register Account</a>
-    
-    <a href="https://wa.me/919978982577" target="_blank" class="sidebar-link">💬 WhatsApp Helpdesk</a>
-    <a href="https://t.me/aivalue8" target="_blank" class="sidebar-link">✈️ Telegram Channel</a>
-    <div style="margin-top:auto; font-size:11px; color:#64748b; text-align:center;">
-      Sarah ICS SNPL • Institutional v13.0
+  <!-- Header -->
+  <header class="border-b border-white/5 backdrop-blur-md sticky top-0 z-40 bg-[#07090e]/80">
+    <div class="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-cyan-500 to-emerald-400 flex items-center justify-center font-black text-black text-lg shadow-lg shadow-cyan-500/20">⚡</div>
+        <div>
+          <span class="font-extrabold text-base tracking-wide text-white">ANAS <span class="text-cyan-400">AI</span></span>
+          <span class="text-[10px] bg-cyan-950 text-cyan-300 border border-cyan-500/30 px-2 py-0.5 rounded-full font-bold ml-1.5">PRIVATE VIP</span>
+        </div>
+      </div>
+      
+      <!-- Right Nav Buttons -->
+      <div id="nav-unauth" class="flex items-center space-x-2">
+        <button onclick="showView('view-signin')" class="text-xs font-semibold px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white transition">Sign In</button>
+        <button onclick="showView('view-signup')" class="text-xs font-bold px-3 py-1.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black transition">Join Club</button>
+      </div>
+
+      <div id="nav-auth" class="hidden flex items-center space-x-3">
+        <span class="hidden sm:inline-flex items-center text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-full">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse mr-2"></span>
+          Live Radar Sync
+        </span>
+        <button onclick="toggleSidebar()" class="flex items-center space-x-1.5 text-xs font-bold px-3 py-1.5 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 hover:bg-cyan-500 hover:text-black transition">
+          <span>☰</span> <span>Menu & Setups</span>
+        </button>
+      </div>
     </div>
-  </div>
+  </header>
 
-  <div class="card">
-    <button id="pwa-install-btn" class="btn btn-install" onclick="installPWA()">📲 INSTALL ANAS AI APP</button>
+  <!-- Notification Banner -->
+  <div id="alert-banner" class="hidden max-w-md mx-auto mt-4 px-4 py-2.5 rounded-xl text-xs font-semibold text-center border"></div>
 
-    <div class="logo-header">
-      <h1>⚡ ANAS AI QUANT</h1>
-      <p>NIFTY • BANKNIFTY • SENSEX Institutional Engine</p>
-    </div>
+  <!-- MAIN BODY VIEW CONTAINER -->
+  <main class="max-w-5xl mx-auto px-4 py-8 flex-1 w-full">
 
-    <div class="warn-box">
-      <strong>⚠️ STRICT TRADER DISCIPLINE RULE:</strong>
-      Market hours (9:15 AM - 3:30 PM) me manual order execute karne ya algorithm ke chalte trade ko disturb karne par Support-Lock lag jayega aur baki trades us din ke liye freeze ho jayenge.
-    </div>
-
-    <div class="tabs">
-      <div class="tab" id="tab-signup" onclick="switchTab('signup')">Sign Up</div>
-      <div class="tab active" id="tab-signin" onclick="switchTab('signin')">Sign In</div>
-      <div class="tab" id="tab-forgot" onclick="switchTab('forgot')">Forgot?</div>
-    </div>
-
-    <div id="alert-box" class="alert"></div>
-
-    <!-- SIGN IN -->
-    <div id="view-signin">
-      <div class="input-grp">
-        <label>Email Address</label>
-        <input type="email" id="si_email" placeholder="aapka@email.com" required>
+    <!-- 1. SIGN IN VIEW -->
+    <div id="view-signin" class="max-w-md mx-auto glass-card rounded-3xl p-6 sm:p-8 border border-white/10 glow-cyan">
+      <div class="text-center mb-6">
+        <span class="text-xs font-bold text-cyan-400 tracking-widest uppercase">Authorized Access</span>
+        <h2 class="text-2xl font-bold text-white mt-1">Trader Sign In</h2>
+        <p class="text-xs text-slate-400 mt-1">Enter registered credentials to launch terminal</p>
       </div>
-      <div class="input-grp">
-        <label>Password</label>
-        <input type="password" id="si_pwd" placeholder="••••••••" required>
+      <div class="space-y-4">
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1">Registered Email</label>
+          <input type="email" id="si_email" placeholder="trader@domain.com" class="w-full bg-slate-900 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 transition">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1">Password</label>
+          <input type="password" id="si_pwd" placeholder="••••••••" class="w-full bg-slate-900 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 transition">
+        </div>
+        <button onclick="doSignIn(false)" class="w-full py-3 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-extrabold text-xs tracking-wider uppercase transition shadow">
+          Launch Trading Terminal ➔
+        </button>
+        <div class="text-center text-xs text-slate-400 pt-2">
+          New Trader? <button onclick="showView('view-signup')" class="text-cyan-400 font-bold hover:underline">Apply with Invite Code</button>
+        </div>
       </div>
-      <button class="btn btn-primary" onclick="doSignIn()">Sign In to Dashboard</button>
-    </div>
-
-    <!-- SIGN UP -->
-    <div id="view-signup" style="display:none;">
-      <div class="input-grp">
-        <label>Full Name</label>
-        <input type="text" id="su_name" placeholder="Rayan Patel">
-      </div>
-      <div class="input-grp">
-        <label>Email Address</label>
-        <input type="email" id="su_email" placeholder="trader@sarahics.in">
-      </div>
-      <div class="input-grp">
-        <label>Mobile Number</label>
-        <input type="tel" id="su_mobile" placeholder="9978982577">
-      </div>
-      <div class="input-grp">
-        <label>Password</label>
-        <input type="password" id="su_pwd" placeholder="Min 6 characters">
-      </div>
-      <div class="input-grp">
-        <label>Institutional Strategy (Default: ANAS Hybrid)</label>
-        <select id="su_strat">
-          {% for s in strategies %}
-            <option value="{{ s.id }}">{{ s.name }} ({{ s.win_rate }})</option>
-          {% endfor %}
-        </select>
-      </div>
-      <button class="btn btn-primary" onclick="doSignUp()">Create Trader Account</button>
     </div>
 
-    <!-- FORGOT -->
-    <div id="view-forgot" style="display:none;">
-      <div class="input-grp">
-        <label>Registered Email</label>
-        <input type="email" id="fg_email" placeholder="trader@domain.com">
+    <!-- 2. SIGN UP VIEW (WITH MANDATORY BROKER & INVITE CODE) -->
+    <div id="view-signup" class="hidden max-w-xl mx-auto glass-card rounded-3xl p-6 sm:p-8 border border-white/10">
+      <div class="text-center mb-6">
+        <span class="text-xs font-bold text-emerald-400 tracking-widest uppercase">Invite-Only Onboarding</span>
+        <h2 class="text-2xl font-bold text-white mt-1">Join Anas AI VIP Club</h2>
+        <p class="text-xs text-slate-400 mt-1">Institutional quantitative setups with algorithmic precision.</p>
       </div>
-      <button class="btn btn-primary" onclick="doForgot()">Send Reset Password Link</button>
-    </div>
 
-    <!-- ADVANCED TRADER DASHBOARD -->
-    <div id="view-trader" style="display:none;">
-      <div style="background:#1e293b; padding:14px; border-radius:12px; margin-bottom:14px;">
-        <div style="display:flex; justify-content:space-between; align-items:center;">
+      <div class="space-y-4">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <div style="font-size:11px; color:#94a3b8;">Active Trader</div>
-            <div id="u_name_display" style="font-size:15px; font-weight:800; color:#38bdf8;">--</div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1">Full Name</label>
+            <input type="text" id="su_name" placeholder="Rahul Sharma" class="w-full bg-slate-900 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-400">
           </div>
-          <span class="badge badge-auto" id="totp_badge">🔄 AUTO-TOKEN: ACTIVE</span>
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1">Mobile Number</label>
+            <input type="text" id="su_mobile" placeholder="+91 9876543210" class="w-full bg-slate-900 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-400">
+          </div>
         </div>
-        <div style="font-size:11px; color:#cbd5e1; margin-top:6px;">Plan: <strong id="u_plan_display" style="color:#4ade80;">FREE_TRIAL (7 Days)</strong></div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1">Email Address</label>
+            <input type="email" id="su_email" placeholder="trader@domain.com" class="w-full bg-slate-900 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-400">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1">Password</label>
+            <input type="password" id="su_pwd" placeholder="Create strong password" class="w-full bg-slate-900 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-400">
+          </div>
+        </div>
+
+        <!-- BROKER VERIFICATION SECTION -->
+        <div class="p-4 rounded-2xl bg-black/40 border border-cyan-500/20">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-xs font-bold text-cyan-400 uppercase">Trading Platform KYC (Mandatory)</span>
+            <span class="text-[10px] text-slate-400">Locks on Signup</span>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="block text-[11px] text-slate-400 mb-1">Select Active Broker</label>
+              <select id="su_broker" class="w-full bg-slate-900 border border-white/10 rounded-xl px-3 py-2 text-xs text-white font-medium focus:outline-none focus:border-cyan-400">
+                <option value="DHAN">Dhan (Recommended & Fastest)</option>
+                <option value="ANGEL">Angel One (SmartAPI)</option>
+                <option value="FYERS">Fyers (API v3)</option>
+                <option value="UPSTOX">Upstox (Plus API)</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-[11px] text-slate-400 mb-1">Broker Client ID</label>
+              <input type="text" id="su_client_id" placeholder="e.g. 1000123456" class="w-full bg-slate-900 border border-white/10 rounded-xl px-3 py-2 text-xs text-cyan-300 font-mono focus:outline-none focus:border-cyan-400">
+            </div>
+          </div>
+
+          <!-- Free Demat Referral Links for New Traders -->
+          <div class="mt-3 pt-3 border-t border-white/5">
+            <span class="text-[10px] font-semibold text-amber-400 uppercase block mb-1.5">Don't have a supported Demat account? Open Free:</span>
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-[10px] font-bold">
+              <a href="https://invite.dhan.co/?join=DHAN" target="_blank" class="p-1.5 rounded-lg bg-white/5 hover:bg-cyan-500 hover:text-black border border-white/10 transition">⚡ Open Dhan</a>
+              <a href="https://angel-one.onelink.me/Wjgr/referral" target="_blank" class="p-1.5 rounded-lg bg-white/5 hover:bg-amber-400 hover:text-black border border-white/10 transition">🔶 Open Angel</a>
+              <a href="https://open-account.fyers.in/" target="_blank" class="p-1.5 rounded-lg bg-white/5 hover:bg-emerald-400 hover:text-black border border-white/10 transition">🟢 Open Fyers</a>
+              <a href="https://upstox.com/open-account/" target="_blank" class="p-1.5 rounded-lg bg-white/5 hover:bg-purple-400 hover:text-black border border-white/10 transition">🟣 Open Upstox</a>
+            </div>
+          </div>
+        </div>
+
+        <!-- MANDATORY INVITE CODE SECTION -->
+        <div class="p-4 rounded-2xl bg-amber-500/5 border border-amber-500/20">
+          <label class="block text-xs font-bold text-amber-400 uppercase mb-1">Compulsory Invite / Referral Code</label>
+          <input type="text" id="su_ref" placeholder="Enter Invite Code (e.g. ANASVIP or Friend's Code)" class="w-full bg-slate-900 border border-amber-500/30 rounded-xl px-3.5 py-2.5 text-xs text-amber-300 font-mono uppercase focus:outline-none focus:border-amber-400">
+          <p class="text-[11px] text-slate-400 mt-2 leading-relaxed">
+            Private Quant Access is restricted. Don't have a referral code? Contact Uplink:
+          </p>
+          <div class="flex items-center space-x-2 mt-2">
+            <a href="https://wa.me/919999999999?text=Hi%20Anas%20AI,%20I%20need%20an%20Invite%20Code" target="_blank" class="text-[10px] font-bold px-3 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500 hover:text-black transition">
+              💬 WhatsApp Uplink
+            </a>
+            <a href="https://t.me/yourtelegram" target="_blank" class="text-[10px] font-bold px-3 py-1 rounded-lg bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 hover:bg-cyan-500 hover:text-black transition">
+              ✈️ Telegram Uplink
+            </a>
+          </div>
+        </div>
+
+        <button onclick="doSignUp()" class="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-400 to-cyan-400 text-black font-extrabold text-xs tracking-wider uppercase transition shadow-lg">
+          Complete KYC & Create Account ➔
+        </button>
+
+        <div class="text-center text-xs text-slate-400">
+          Already registered? <button onclick="showView('view-signin')" class="text-cyan-400 font-bold hover:underline">Sign In here</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3. SUBSCRIPTION GATE VIEW (WHEN PLAN == 'PENDING') -->
+    <div id="view-gated-checkout" class="hidden max-w-xl mx-auto glass-card rounded-3xl p-6 sm:p-8 border border-amber-500/30 glow-cyan">
+      <div class="text-center mb-6">
+        <span class="text-xs font-bold text-amber-400 tracking-widest uppercase">Account Verification Required</span>
+        <h2 class="text-2xl font-bold text-white mt-1">Activate Quant Subscription</h2>
+        <p class="text-xs text-slate-400 mt-1">Your account is created. Complete payment to unlock Live Algorithmic Radar.</p>
       </div>
 
-      <!-- 1-TIME BROKER SETUP (ZERO DAILY LOGIN) -->
-      <div style="background:#0b1329; border:1px solid #1e3a8a; border-radius:14px; padding:14px; margin-bottom:14px;">
-        <div style="font-size:13px; font-weight:800; color:#60a5fa; margin-bottom:4px;">🔑 1-TIME BROKER CONNECT (AUTO-TOTP)</div>
-        <div style="font-size:11px; color:#94a3b8; line-height:1.4; margin-bottom:10px;">
-          Sirf ek baar credentials aur TOTP Secret daalein. Aapke subscription validity tak <strong>roz subah 8:45 AM</strong> system bina aapko pareshan kiye khud fresh token generate kar lega!
+      <!-- Plan Selection -->
+      <div class="grid grid-cols-3 gap-2.5 mb-5">
+        <button onclick="setGatePlan('Starter Quant', 999)" id="g-p-999" class="p-3 rounded-xl border border-white/10 bg-slate-900 text-center hover:border-cyan-400 transition">
+          <div class="text-[10px] text-slate-400 font-bold">MONTHLY</div>
+          <div class="text-sm font-extrabold text-white mt-0.5">₹999</div>
+        </button>
+        <button onclick="setGatePlan('Pro Trader VIP', 2499)" id="g-p-2499" class="p-3 rounded-xl border-2 border-emerald-500 bg-slate-900 text-center glow-emerald transition">
+          <div class="text-[10px] text-emerald-400 font-bold">QUARTERLY</div>
+          <div class="text-sm font-extrabold text-emerald-400 mt-0.5">₹2,499</div>
+        </button>
+        <button onclick="setGatePlan('Institutional Alpha', 7999)" id="g-p-7999" class="p-3 rounded-xl border border-white/10 bg-slate-900 text-center hover:border-cyan-400 transition">
+          <div class="text-[10px] text-amber-400 font-bold">ANNUAL</div>
+          <div class="text-sm font-extrabold text-white mt-0.5">₹7,999</div>
+        </button>
+      </div>
+
+      <!-- Auto-Deducted Referral Credits Banner -->
+      <div id="credit-deduct-box" class="p-3 rounded-xl bg-emerald-950/60 border border-emerald-500/30 text-xs text-emerald-300 flex items-center justify-between mb-5">
+        <span>🎁 Referral Wallet Credit Applied:</span>
+        <strong id="credit-applied-amount" class="font-mono text-emerald-400">₹0</strong>
+      </div>
+
+      <!-- QR & UPI Payment Card -->
+      <div class="p-5 bg-black/60 rounded-2xl border border-white/10 flex flex-col items-center text-center mb-5">
+        <span class="text-xs font-bold text-slate-400 uppercase mb-2">Scan with GPay / PhonePe / Paytm</span>
+        <div class="p-2.5 bg-white rounded-2xl shadow-xl mb-3">
+          <img id="gate-upi-qr" src="https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=upi://pay?pa=Q57363994@ybl%26am=2499%26cu=INR" class="w-36 h-36">
         </div>
+        <div class="text-xs font-mono text-slate-300">
+          Net Payable: <strong id="gate-payable-text" class="text-emerald-400 text-base">₹2,499</strong> • UPI: <span class="text-cyan-400">Q57363994@ybl</span>
+        </div>
+      </div>
+
+      <!-- Submit 12-digit UTR -->
+      <div class="space-y-3">
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1">Enter 12-Digit Bank/UPI UTR Number</label>
+          <input type="text" id="gate_utr" maxlength="16" placeholder="e.g. 432109876543" class="w-full bg-slate-900 border border-cyan-500/40 rounded-xl px-3.5 py-2.5 text-sm text-cyan-300 font-mono focus:outline-none focus:border-cyan-400">
+        </div>
+        <button onclick="submitGateUTR()" class="w-full py-3 rounded-xl bg-gradient-to-r from-cyan-400 to-emerald-400 text-black font-extrabold text-xs uppercase tracking-wider transition shadow">
+          ⚡ Submit UTR for Admin Instant Approval
+        </button>
+      </div>
+
+      <div id="gate-waiting-msg" class="hidden mt-4 p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-center text-xs text-amber-300 font-medium">
+        ⏳ <strong>UTR Submitted!</strong> Admin is verifying your payment. Once approved, the Quant Cockpit will open automatically.
+      </div>
+    </div>
+
+    <!-- 4. PURE & CLEAN TRADER DASHBOARD (POST-APPROVAL ONLY) -->
+    <div id="view-trader" class="hidden space-y-6">
+      
+      <!-- Top Trader Info Bar -->
+      <div class="glass-card rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border border-white/10">
+        <div>
+          <div class="flex items-center space-x-2">
+            <h2 id="u_name_display" class="text-lg font-extrabold text-white">Trader</h2>
+            <span id="u_plan_display" class="text-xs font-bold text-emerald-400 bg-emerald-950/80 border border-emerald-500/30 px-2.5 py-0.5 rounded-full">ACTIVE SUBSCRIBER</span>
+          </div>
+          <div class="text-xs text-slate-400 mt-1 font-mono">
+            Broker: <strong id="u_broker_display" class="text-cyan-400">DHAN</strong> (<span id="u_client_display">1000123456</span>) • Session: <span class="text-emerald-400">Single Device Secure</span>
+          </div>
+        </div>
+
+        <div class="flex items-center space-x-2">
+          <button onclick="toggleSidebar()" class="text-xs font-bold px-3.5 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black transition shadow">
+            ⚙️ Setup & Referral Hub
+          </button>
+        </div>
+      </div>
+
+      <!-- DAILY LIVE RADAR (READ-ONLY CLEAN VIEW) -->
+      <div class="glass-card rounded-3xl p-6 sm:p-8 border border-cyan-500/20 glow-cyan">
+        <div class="flex items-center justify-between pb-4 border-b border-white/10">
+          <div>
+            <span class="text-xs font-bold text-cyan-400 uppercase tracking-widest">Autonomous Engine</span>
+            <h3 class="text-xl font-bold text-white mt-0.5">Daily Live Market Radar</h3>
+          </div>
+          <span class="text-xs font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-3 py-1 rounded-full">
+            ● SYSTEM ACTIVE (9:15 AM - 3:30 PM)
+          </span>
+        </div>
+
+        <!-- Radar Metrics -->
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6">
+          <div class="p-4 rounded-2xl bg-slate-900/60 border border-white/5">
+            <span class="text-xs text-slate-400 font-medium">Algorithmic Strategy</span>
+            <div id="u_strategy_display" class="text-sm font-bold text-white mt-1">ANAS Institutional Hybrid (78.4%)</div>
+          </div>
+          <div class="p-4 rounded-2xl bg-slate-900/60 border border-white/5">
+            <span class="text-xs text-slate-400 font-medium">Auto-TOTP Auto-Pilot</span>
+            <div class="text-sm font-bold text-emerald-400 mt-1">● Synced at 8:45 AM</div>
+          </div>
+          <div class="p-4 rounded-2xl bg-slate-900/60 border border-white/5">
+            <span class="text-xs text-slate-400 font-medium">Execution Lock Protocol</span>
+            <div class="text-sm font-bold text-cyan-400 mt-1">Zero Emotional Interference</div>
+          </div>
+        </div>
+
+        <div class="mt-6 p-4 rounded-2xl bg-black/40 border border-white/5 text-xs text-slate-400 leading-relaxed">
+          ⚡ <strong>Institutional Rule:</strong> Algorithmic trades are executed in milliseconds via direct broker webhooks. Manual modifications or cancelling trail-stop losses from mobile terminal will trigger automated support freeze.
+        </div>
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- SLIDE-OVER SIDEBAR DRAWER (HOLDS BROKER TOTP, STRATEGY & REFERRAL HUB) -->
+  <div id="sidebar-drawer" class="fixed inset-y-0 right-0 w-full max-w-md bg-[#0a0e17] border-l border-white/10 z-50 transform translate-x-full sidebar-transition flex flex-col justify-between shadow-2xl">
+    
+    <!-- Sidebar Header -->
+    <div class="p-5 border-b border-white/10 flex items-center justify-between">
+      <div class="flex items-center space-x-2">
+        <span class="text-cyan-400 font-black text-lg">⚙️</span>
+        <h3 class="text-base font-bold text-white">Terminal Settings & Referral</h3>
+      </div>
+      <button onclick="toggleSidebar()" class="text-slate-400 hover:text-white font-bold text-lg px-2">✕</button>
+    </div>
+
+    <!-- Sidebar Scrollable Body -->
+    <div class="p-5 overflow-y-auto space-y-6 flex-1 text-xs">
+      
+      <!-- 1. Auto-TOTP Secret Setup -->
+      <div class="glass-card p-4 rounded-2xl border border-white/10">
+        <div class="flex items-center justify-between mb-1.5">
+          <span class="font-bold text-white uppercase text-[11px]">🔑 Auto-TOTP Broker Setup</span>
+          <span class="text-[10px] text-cyan-400 font-mono">BROKER: LOCKED</span>
+        </div>
+        <p class="text-slate-400 text-[11px] mb-3">Paste your Broker TOTP Secret QR Code string once for zero daily manual logins.</p>
         
-        <div class="input-grp">
-          <label>Select Broker</label>
-          <select id="br_name">
-            <option value="DHAN">Dhan (Recommended &amp; Fastest API)</option>
-            <option value="ZERODHA">Zerodha (Kite Connect API)</option>
-            <option value="ANGEL">Angel One (SmartAPI)</option>
-            <option value="FYERS">Fyers (API v3)</option>
-            <option value="UPSTOX">Upstox (Plus API)</option>
-            <option value="ALICEBLUE">Alice Blue (ANT API)</option>
-            <option value="SHOONYA">Shoonya / Finvasia (Zero Brokerage)</option>
-            <option value="KOTAK">Kotak Neo (Trade API)</option>
-            <option value="5PAISA">5paisa (Developer API)</option>
-            <option value="ICICI">ICICI Direct (Breeze API)</option>
-            <option value="MOTILAL">Motilal Oswal (MO API)</option>
-            <option value="IIFL">IIFL Securities (TTBlaze API)</option>
-</select>
+        <div class="space-y-2.5">
+          <div>
+            <label class="block text-[11px] text-slate-300 mb-1">Broker Client ID (Correct if needed)</label>
+            <input type="text" id="sb_client_id" class="w-full bg-slate-900 border border-white/10 rounded-xl px-3 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-cyan-400">
+          </div>
+          <div>
+            <label class="block text-[11px] text-slate-300 mb-1">TOTP Secret Key</label>
+            <input type="password" id="sb_totp" placeholder="e.g. JBSWY3DPEHPK3PXP" class="w-full bg-slate-900 border border-white/10 rounded-xl px-3 py-1.5 text-xs text-cyan-300 font-mono focus:outline-none focus:border-cyan-400">
+          </div>
+          <button onclick="updateBrokerCredentials()" class="w-full py-2 bg-cyan-500 hover:bg-cyan-400 text-black font-bold rounded-xl transition">
+            Save & Verify Handshake
+          </button>
         </div>
-        <div class="input-grp">
-          <label>Broker Client ID</label>
-          <input type="text" id="br_client_id" placeholder="e.g. 1000123456">
-        </div>
-        <div class="input-grp">
-          <label>Login PIN / Password</label>
-          <input type="password" id="br_pin" placeholder="••••">
-        </div>
-        <div class="input-grp">
-          <label>TOTP Secret Key (Broker QR Setup Code)</label>
-          <input type="text" id="br_totp" placeholder="e.g. JBSWY3DPEHPK3PXP">
-        </div>
-        <button class="btn btn-primary" style="background:#1d4ed8;" onclick="saveBrokerDetails()">Save & Enable Auto-Pilot Renewal</button>
       </div>
 
-      <!-- STRATEGY SELECTOR -->
-      <div class="input-grp">
-        <label>Selected Strategy (Top 10 Institutional Leaderboard)</label>
-        <select id="u_active_strat" onchange="saveActiveStrategy()">
-          {% for s in strategies %}
-            <option value="{{ s.id }}">{{ s.name }} — {{ s.win_rate }} Win</option>
-          {% endfor %}
+      <!-- 2. Strategy Selector -->
+      <div class="glass-card p-4 rounded-2xl border border-white/10">
+        <span class="font-bold text-white uppercase text-[11px] block mb-1">📈 Quantitative Strategy</span>
+        <select id="sb_strategy" class="w-full bg-slate-900 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-400">
+          <option value="S1_IQ_CORE">ANAS Institutional Hybrid (78.4% Win Rate)</option>
+          <option value="S2_GAMMA">Gamma Scalp Multiplier (BankNifty Expiry)</option>
+          <option value="S3_VWAP">VWAP Reversion Alpha</option>
+          <option value="S4_ORB">9:20 High Probability Straddle</option>
         </select>
       </div>
 
-      <!-- UPI UPGRADE -->
-      <div style="background:#0b1329; border:1px solid #334155; border-radius:12px; padding:14px; margin-bottom:14px;">
-        
-        <div style="background:#0b1222;border:1px solid #1e3a5f;border-radius:12px;padding:14px;margin:14px 0;">
-          <div style="font-size:12px;font-weight:700;color:#38bdf8;margin-bottom:6px;">🤝 NEW TRADER? OPEN FREE DEMAT (TOP 4 PARTNER LINKS)</div>
-          <div style="font-size:11px;color:#94a3b8;margin-bottom:10px;">Account nahi hai toh niche partner link se kholein &amp; 1st month priority onboarding paayein:</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-            <a href="https://join.dhan.co/?invite=GOLDV15912" target="_blank" style="text-align:center;padding:8px;border-radius:8px;background:#1e293b;border:1px solid #38bdf8;color:#38bdf8;text-decoration:none;font-size:11px;font-weight:700;">⚡ Open Dhan</a>
-            <a href="https://angel-one.onelink.me/Wjgr/anasquant" target="_blank" style="text-align:center;padding:8px;border-radius:8px;background:#1e293b;border:1px solid #fb923c;color:#fb923c;text-decoration:none;font-size:11px;font-weight:700;">🔶 Open Angel One</a>
-            <a href="https://signup.fyers.in/?utm-source=AP-Lead&utm-medium=ANAS" target="_blank" style="text-align:center;padding:8px;border-radius:8px;background:#1e293b;border:1px solid #4ade80;color:#4ade80;text-decoration:none;font-size:11px;font-weight:700;">🟢 Open Fyers</a>
-            <a href="https://upstox.com/open-account/?f=ANAS" target="_blank" style="text-align:center;padding:8px;border-radius:8px;background:#1e293b;border:1px solid #c084fc;color:#c084fc;text-decoration:none;font-size:11px;font-weight:700;">🟣 Open Upstox</a>
+      <!-- 3. VIRAL REFERRAL HUB (10% COMPOUNDING CREDITS) -->
+      <div class="glass-card p-4 rounded-2xl border border-amber-500/30 glow-emerald">
+        <div class="flex items-center justify-between mb-1.5">
+          <span class="font-bold text-amber-400 uppercase text-[11px]">🎁 My Referral Hub</span>
+          <span class="text-[10px] bg-amber-950 text-amber-300 border border-amber-500/20 px-2 py-0.5 rounded-full font-bold">10% CASH CREDIT</span>
+        </div>
+        <p class="text-slate-400 text-[11px] leading-relaxed mb-3">
+          Share your invite code. You get <strong>10% credit</strong> on every friend's subscription. 10 referrals = <strong>100% FREE NEXT RENEWAL!</strong>
+        </p>
+
+        <!-- Referral Code Display & Copy -->
+        <div class="p-3 bg-black/60 rounded-xl border border-white/10 flex items-center justify-between mb-3">
+          <div>
+            <div class="text-[10px] text-slate-500">YOUR INVITE CODE</div>
+            <strong id="sb_my_ref_code" class="text-sm font-mono text-cyan-400">ANASVIP</strong>
+          </div>
+          <button onclick="copyMyReferral()" id="btn-copy-ref" class="text-xs font-bold px-3 py-1.5 rounded-lg bg-cyan-500 text-black hover:bg-cyan-400 transition">
+            Copy Link
+          </button>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2 text-center mb-3">
+          <div class="p-2 bg-slate-900 rounded-xl border border-white/5">
+            <div class="text-[10px] text-slate-400">Referral Wallet</div>
+            <div id="sb_wallet_credits" class="text-sm font-extrabold text-emerald-400 font-mono">₹0</div>
+          </div>
+          <div class="p-2 bg-slate-900 rounded-xl border border-white/5">
+            <div class="text-[10px] text-slate-400">Active Friends</div>
+            <div id="sb_ref_count" class="text-sm font-extrabold text-cyan-400 font-mono">0</div>
           </div>
         </div>
 
-        <div style="background:#0b1222;border:1px solid #1e293b;border-radius:12px;padding:14px;margin:14px 0;">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-            <span style="font-size:12px;font-weight:700;color:#e2e8f0;">📡 DAILY LIVE RADAR (READ-ONLY)</span>
-            <span id="user-ks-badge" style="font-size:10px;font-weight:800;padding:3px 8px;border-radius:999px;background:#14532d;color:#4ade80;">● SYSTEM ACTIVE</span>
-          </div>
-          <div style="font-size:11px;color:#94a3b8;line-height:1.6;">
-            • <b>Engine Mode:</b> Automated Market Structure (No Manual Override)<br>
-            • <b>Support-Lock Shield:</b> Active (9:15 AM – 3:30 PM)<br>
-            • <b>Daily Check:</b> Strategy &amp; Broker Token auto-synced at 8:45 AM
-          </div>
-        </div>
-
-<div style="font-size:13px; font-weight:700; color:#fde047; margin-bottom:4px;">💳 Extend Subscription (Direct UPI)</div>
-        <div style="font-size:11px; color:#94a3b8; margin-bottom:8px;">UPI: <strong>Q57363994@ybl</strong> (Sarah ICS SNPL)</div>
-        <div class="input-grp">
-          <select id="pay_plan">
-            <option value="WEEKLY">Weekly Pass — ₹499</option>
-            <option value="MONTHLY">Monthly Pro — ₹1,499</option>
-            <option value="YEARLY">Annual Institutional — ₹12,999</option>
-          </select>
-        </div>
-        <div class="input-grp">
-          <input type="text" id="pay_utr" placeholder="12-digit UTR No.">
-        </div>
-        <button class="btn btn-primary" onclick="submitUTR()">Submit UTR for Activation</button>
+        <a id="sb_share_wa" target="_blank" class="block w-full text-center py-2 rounded-xl bg-emerald-500 text-black font-bold transition hover:opacity-95">
+          Share Invite on WhatsApp ➔
+        </a>
       </div>
 
-      <button class="btn" style="background:#334155; color:#cbd5e1;" onclick="logout()">Logout / Switch Account</button>
+      <!-- 4. Support Links -->
+      <div class="grid grid-cols-2 gap-2 text-center">
+        <a href="https://wa.me/919999999999" target="_blank" class="p-2 rounded-xl bg-slate-900 hover:bg-white/10 border border-white/10 text-emerald-400 font-bold transition">
+          💬 WhatsApp
+        </a>
+        <a href="https://t.me/yourtelegram" target="_blank" class="p-2 rounded-xl bg-slate-900 hover:bg-white/10 border border-white/10 text-cyan-400 font-bold transition">
+          ✈️ Telegram
+        </a>
+      </div>
+
     </div>
 
-    <!-- SUPPORT LINKS -->
-    <div class="support-row">
-      <a href="https://wa.me/919978982577" target="_blank" class="support-btn btn-wa">💬 WhatsApp Support</a>
-      <a href="https://t.me/aivalue8" target="_blank" class="support-btn btn-tg">✈️ Telegram Support</a>
+    <!-- Sidebar Footer -->
+    <div class="p-4 border-t border-white/10">
+      <button onclick="doLogout()" class="w-full py-2.5 rounded-xl bg-rose-500/10 hover:bg-rose-500 text-rose-300 hover:text-white border border-rose-500/20 font-bold transition">
+        🚪 Sign Out Trader Account
+      </button>
+    </div>
+
+  </div>
+
+  <!-- CONFLICT MODAL (SINGLE DEVICE ENFORCEMENT) -->
+  <div id="conflictModal" class="fixed inset-0 bg-black/85 backdrop-blur-md z-50 hidden flex items-center justify-center p-4">
+    <div class="glass-card max-w-md w-full rounded-3xl p-6 border border-amber-500/40 text-center">
+      <div class="w-12 h-12 rounded-2xl bg-amber-500/10 text-amber-400 flex items-center justify-center text-2xl mx-auto mb-3">⚠️</div>
+      <h3 class="text-lg font-bold text-white">Active Session Detected</h3>
+      <p class="text-xs text-slate-400 mt-2 leading-relaxed">
+        Aapka account pehle se kisi doosre device par chal raha hai. Ek time par sirf 1 device me login allowed hai.
+      </p>
+      <div class="mt-6 flex flex-col space-y-2">
+        <button onclick="doSignIn(true)" class="py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs uppercase tracking-wider transition">
+          ⚡ Sign Out Other Device & Login Here
+        </button>
+        <button onclick="document.getElementById('conflictModal').classList.add('hidden')" class="py-2 text-xs text-slate-400 hover:text-white transition">
+          Cancel
+        </button>
+      </div>
     </div>
   </div>
 
+  <!-- Footer -->
+  <footer class="border-t border-white/5 py-4 text-center text-xs text-slate-500">
+    <div>© 2026 Anas AI Private Quant Desk • Single Device Active Protection</div>
+  </footer>
+
+  <!-- CLIENT-SIDE LOGIC -->
   <script>
-    let deferredPrompt = null;
-    window.addEventListener('beforeinstallprompt', (e) => {
-      e.preventDefault();
-      deferredPrompt = e;
-      document.getElementById('pwa-install-btn').style.display = 'block';
-    });
-    function installPWA() {
-      if (deferredPrompt) {
-        deferredPrompt.prompt();
-        deferredPrompt.userChoice.then((c) => {
-          if (c.outcome === 'accepted') document.getElementById('pwa-install-btn').style.display = 'none';
-          deferredPrompt = null;
-        });
-      }
+    let CURRENT_USER = null;
+    let SELECTED_GATE_PLAN = 'Pro Trader VIP';
+    let SELECTED_GATE_PRICE = 2499;
+
+    function showAlert(msg, isError = true) {
+      const b = document.getElementById('alert-banner');
+      b.className = `max-w-md mx-auto mt-4 px-4 py-2.5 rounded-xl text-xs font-semibold text-center border ${isError ? 'bg-rose-950/80 border-rose-500/40 text-rose-300' : 'bg-emerald-950/80 border-emerald-500/40 text-emerald-300'}`;
+      b.innerText = msg;
+      b.classList.remove('hidden');
+      setTimeout(() => b.classList.add('hidden'), 5000);
+    }
+
+    function showView(viewId) {
+      ['view-signin', 'view-signup', 'view-gated-checkout', 'view-trader'].forEach(id => {
+        document.getElementById(id).classList.add('hidden');
+      });
+      document.getElementById(viewId).classList.remove('hidden');
     }
 
     function toggleSidebar() {
-      document.getElementById('sidebar').classList.toggle('open');
-      document.getElementById('overlay').classList.toggle('open');
+      const sb = document.getElementById('sidebar-drawer');
+      sb.classList.toggle('translate-x-full');
     }
 
-    function switchTab(t) {
-      document.getElementById('tab-signup').classList.remove('active');
-      document.getElementById('tab-signin').classList.remove('active');
-      document.getElementById('tab-forgot').classList.remove('active');
-      document.getElementById('view-signup').style.display = 'none';
-      document.getElementById('view-signin').style.display = 'none';
-      document.getElementById('view-forgot').style.display = 'none';
-      hideAlert();
-
-      if (t === 'signup') {
-        document.getElementById('tab-signup').classList.add('active');
-        document.getElementById('view-signup').style.display = 'block';
-      } else if (t === 'signin') {
-        document.getElementById('tab-signin').classList.add('active');
-        document.getElementById('view-signin').style.display = 'block';
-      } else if (t === 'forgot') {
-        document.getElementById('tab-forgot').classList.add('active');
-        document.getElementById('view-forgot').style.display = 'block';
-      }
+    // Auto-fill Invite Code from URL ?ref=CODE
+    const urlParams = new URLSearchParams(window.location.search);
+    const refParam = urlParams.get('ref');
+    if (refParam) {
+      document.getElementById('su_ref').value = refParam.toUpperCase();
+      showView('view-signup');
     }
 
-    function showAlert(msg, isErr=true) {
-      const box = document.getElementById('alert-box');
-      box.className = 'alert ' + (isErr ? 'alert-err' : 'alert-ok');
-      box.innerText = msg;
-      box.style.display = 'block';
-    }
-    function hideAlert() { document.getElementById('alert-box').style.display = 'none'; }
-
-    async function doSignIn() {
+    // SIGN IN
+    async function doSignIn(force = false) {
       const email = document.getElementById('si_email').value.trim();
       const pwd = document.getElementById('si_pwd').value.trim();
-      if (!email || !pwd) { showAlert('Email aur password dono zaroori hain!'); return; }
-      hideAlert();
+      if (!email || !pwd) { showAlert('Email aur Password dono bhariye.'); return; }
+
       try {
         const res = await fetch('/api/signin', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ email: email, password: pwd })
+          body: JSON.stringify({email, password: pwd, force_login: force})
         });
         const d = await res.json();
-        if (d.ok) {
-          localStorage.setItem('anas_user', JSON.stringify(d.user));
-          showTraderView(d.user);
-        } else {
-          showAlert(d.msg || 'Galat login details');
+
+        if (d.conflict) {
+          document.getElementById('conflictModal').classList.remove('hidden');
+          return;
         }
-      } catch (e) {
-        showAlert('Network error: ' + e.message);
-      }
+
+        if (!d.ok) { showAlert(d.msg || 'Login failed'); return; }
+
+        document.getElementById('conflictModal').classList.add('hidden');
+        CURRENT_USER = d.user;
+        localStorage.setItem('anas_session_token', d.session_token);
+        localStorage.setItem('anas_user', JSON.stringify(d.user));
+
+        renderUserInterface();
+      } catch(e) { showAlert('Connection error: ' + e); }
     }
 
+    // SIGN UP
     async function doSignUp() {
       const name = document.getElementById('su_name').value.trim();
-      const email = document.getElementById('su_email').value.trim();
       const mobile = document.getElementById('su_mobile').value.trim();
+      const email = document.getElementById('su_email').value.trim();
       const pwd = document.getElementById('su_pwd').value.trim();
-      const strat = document.getElementById('su_strat').value;
-      if (!name || !email || !mobile || !pwd) { showAlert('Sabhi fields bharna zaroori hai!'); return; }
-      hideAlert();
+      const broker_name = document.getElementById('su_broker').value;
+      const broker_client_id = document.getElementById('su_client_id').value.trim();
+      const ref_by = document.getElementById('su_ref').value.trim();
+
+      if (!name || !mobile || !email || !pwd) { showAlert('Sabhi personal details bhariye.'); return; }
+      if (!broker_client_id) { showAlert('Broker Client ID bharna mandatory hai.'); return; }
+      if (!ref_by) { showAlert('Mandatory Invite Code required! Contact Uplink.'); return; }
+
       try {
         const res = await fetch('/api/saas/signup', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ name: name, email: email, mobile: mobile, password: pwd, strategy: strat })
+          body: JSON.stringify({name, mobile, email, password: pwd, broker_name, broker_client_id, ref_by})
         });
         const d = await res.json();
-        if (d.ok) {
-          showAlert('Account ban gaya! Sign In karein.', false);
-          setTimeout(() => switchTab('signin'), 1500);
+        if (!d.ok) { showAlert(d.msg || 'Signup failed'); return; }
+
+        showAlert('Account created! Proceeding to subscription verification...', false);
+        CURRENT_USER = d.user;
+        renderUserInterface();
+      } catch(e) { showAlert('Signup error: ' + e); }
+    }
+
+    // RENDER APPROPRIATE VIEW (GATED VS UNLOCKED)
+    function renderUserInterface() {
+      if (!CURRENT_USER) return;
+
+      document.getElementById('nav-unauth').classList.add('hidden');
+      document.getElementById('nav-auth').classList.remove('hidden');
+
+      // Check if user is PENDING approval
+      if (CURRENT_USER.plan === 'PENDING' || CURRENT_USER.plan === 'NONE') {
+        showView('view-gated-checkout');
+        updateGateCheckout();
+      } else {
+        // UNLOCKED TRADER TERMINAL
+        showView('view-trader');
+        document.getElementById('u_name_display').innerText = CURRENT_USER.name || 'Trader';
+        document.getElementById('u_plan_display').innerText = (CURRENT_USER.plan || 'ACTIVE') + ' VIP';
+        document.getElementById('u_broker_display').innerText = CURRENT_USER.broker_name || 'DHAN';
+        document.getElementById('u_client_display').innerText = CURRENT_USER.broker_client_id || 'ID Verified';
+
+        // Populate Sidebar
+        document.getElementById('sb_client_id').value = CURRENT_USER.broker_client_id || '';
+        document.getElementById('sb_my_ref_code').innerText = CURRENT_USER.referral_code || 'ANASVIP';
+        document.getElementById('sb_wallet_credits').innerText = '₹' + (CURRENT_USER.referral_credit || 0);
+
+        const shareUrl = `${window.location.origin}/?ref=${CURRENT_USER.referral_code}`;
+        document.getElementById('sb_share_wa').href = `https://api.whatsapp.com/send?text=Join%20Anas%20AI%20Private%20Quant%20Trading%20Desk%20using%20my%20VIP%20Invite%20Code:%20${CURRENT_USER.referral_code}%20Link:%20${encodeURIComponent(shareUrl)}`;
+      }
+    }
+
+    // GATED CHECKOUT LOGIC WITH DYNAMIC REFERRAL CREDITS
+    function setGatePlan(planName, price) {
+      SELECTED_GATE_PLAN = planName;
+      SELECTED_GATE_PRICE = price;
+      [999, 2499, 7999].forEach(p => {
+        const el = document.getElementById('g-p-' + p);
+        if (p === price) {
+          el.className = 'p-3 rounded-xl border-2 border-emerald-500 bg-slate-900 text-center glow-emerald transition';
         } else {
-          showAlert(d.msg || 'Signup error');
+          el.className = 'p-3 rounded-xl border border-white/10 bg-slate-900 text-center hover:border-cyan-400 transition';
         }
-      } catch (e) {
-        showAlert('Network error: ' + e.message);
-      }
+      });
+      updateGateCheckout();
     }
 
-    async function saveBrokerDetails() {
-      const user = JSON.parse(localStorage.getItem('anas_user') || '{}');
-      const broker = document.getElementById('br_name').value;
-      const clientId = document.getElementById('br_client_id').value.trim();
-      const pin = document.getElementById('br_pin').value.trim();
-      const totp = document.getElementById('br_totp').value.trim();
+    function updateGateCheckout() {
+      const userCredits = (CURRENT_USER && CURRENT_USER.referral_credit) ? CURRENT_USER.referral_credit : 0;
+      const discount = Math.min(SELECTED_GATE_PRICE, userCredits);
+      const payable = SELECTED_GATE_PRICE - discount;
 
-      if (!clientId || !totp) { showAlert('Client ID aur TOTP Secret zaroori hain!'); return; }
-      hideAlert();
+      document.getElementById('credit-applied-amount').innerText = `-₹${discount}`;
+      document.getElementById('gate-payable-text').innerText = `₹${payable.toLocaleString('en-IN')}`;
+
+      const upiUrl = `upi://pay?pa=Q57363994@ybl&pn=Anas%20AI&am=${payable}&cu=INR`;
+      document.getElementById('gate-upi-qr').src = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(upiUrl)}`;
+    }
+
+    async function submitGateUTR() {
+      const utr = document.getElementById('gate_utr').value.trim();
+      if (!utr || utr.length < 8) { showAlert('Kripya 12-digit valid UTR number enter karein.'); return; }
+
       try {
-        const res = await fetch('/api/user/save-broker', {
+        const res = await fetch('/submit_utr', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+          body: new URLSearchParams({
+            name: CURRENT_USER.name,
+            email: CURRENT_USER.email,
+            plan: SELECTED_GATE_PLAN,
+            utr: utr,
+            amount: SELECTED_GATE_PRICE
+          })
+        });
+        document.getElementById('gate-waiting-msg').classList.remove('hidden');
+        showAlert('UTR Submitted! Verification in progress.', false);
+      } catch(e) { showAlert('Submission failed: ' + e); }
+    }
+
+    async function updateBrokerCredentials() {
+      const newClientId = document.getElementById('sb_client_id').value.trim();
+      const totp = document.getElementById('sb_totp').value.trim();
+      if (!newClientId) { showAlert('Client ID cannot be empty'); return; }
+
+      try {
+        const res = await fetch('/api/saas/update-broker-client', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ user_id: user.id, broker: broker, client_id: clientId, pin: pin, totp_secret: totp })
+          body: JSON.stringify({user_id: CURRENT_USER.id, broker_client_id: newClientId, broker_totp: totp})
         });
         const d = await res.json();
-        showAlert(d.msg || 'Broker details saved!', !d.ok);
-      } catch (e) {
-        showAlert('Network error: ' + e.message);
-      }
+        showAlert(d.msg || 'Broker Updated!', !d.ok);
+        if (d.ok) {
+          CURRENT_USER.broker_client_id = newClientId;
+          document.getElementById('u_client_display').innerText = newClientId;
+        }
+      } catch(e) { showAlert('Update error: ' + e); }
     }
 
-    async function saveActiveStrategy() {
-      const user = JSON.parse(localStorage.getItem('anas_user') || '{}');
-      const strat = document.getElementById('u_active_strat').value;
+    function copyMyReferral() {
+      const code = CURRENT_USER ? CURRENT_USER.referral_code : 'ANASVIP';
+      const link = `${window.location.origin}/?ref=${code}`;
+      navigator.clipboard.writeText(link).then(() => {
+        const btn = document.getElementById('btn-copy-ref');
+        btn.innerText = 'Copied!';
+        setTimeout(() => btn.innerText = 'Copy Link', 2500);
+      });
+    }
+
+    function doLogout() {
+      localStorage.clear();
+      CURRENT_USER = null;
+      window.location.reload();
+    }
+
+    // Auto-check stored session on page load
+    const storedUser = localStorage.getItem('anas_user');
+    if (storedUser) {
       try {
-        await fetch('/api/user/save-strategy', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ user_id: user.id, strategy: strat })
-        });
-        showAlert('Strategy update ho gayi!', false);
-      } catch (e) {}
-    }
-
-    async function submitUTR() {
-      const user = JSON.parse(localStorage.getItem('anas_user') || '{}');
-      const plan = document.getElementById('pay_plan').value;
-      const utr = document.getElementById('pay_utr').value.trim();
-      if (!utr || utr.length < 8) { showAlert('Valid UTR daalein!'); return; }
-      hideAlert();
-      try {
-        const res = await fetch('/api/saas/pay', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ user_id: user.id || 1, email: user.email, plan: plan, utr: utr, amount: plan === 'WEEKLY' ? 499 : 1499 })
-        });
-        const d = await res.json();
-        showAlert(d.msg || 'UTR Jama ho gaya!', !d.ok);
-      } catch (e) { showAlert('Network error: ' + e.message); }
-    }
-
-    function showTraderView(user) {
-      document.querySelector('.tabs').style.display = 'none';
-      document.getElementById('view-signin').style.display = 'none';
-      document.getElementById('view-signup').style.display = 'none';
-      document.getElementById('view-forgot').style.display = 'none';
-      document.getElementById('view-trader').style.display = 'block';
-      document.getElementById('u_name_display').innerText = user.name || user.email;
-      document.getElementById('u_plan_display').innerText = (user.plan_name || 'FREE_TRIAL') + ' Active';
-    }
-
-    function logout() {
-      localStorage.removeItem('anas_user');
-      location.reload();
-    }
-
-    window.onload = function() {
-      const saved = localStorage.getItem('anas_user');
-      if (saved) {
-        try { showTraderView(JSON.parse(saved)); } catch(e){}
-      }
+        CURRENT_USER = JSON.parse(storedUser);
+        renderUserInterface();
+      } catch(e) {}
     }
   </script>
 </body>
 </html>
 """
 
-@saas_bp.route("/")
-def saas_index():
-    return render_template_string(PORTAL_HTML, strategies=TOP_10_STRATEGIES)
-
-@saas_bp.route("/api/user/save-broker", methods=["POST"])
-def api_save_broker():
-    data = request.get_json() or {}
-    uid = data.get("user_id")
-    broker = data.get("broker", "DHAN")
-    cid = data.get("client_id", "").strip()
-    pin = data.get("pin", "").strip()
-    totp = data.get("totp_secret", "").strip()
-
-    if not cid or not totp:
-        return jsonify({"ok": False, "msg": "Client ID aur TOTP Secret daalna anivarya hai!"})
-
-    # Test TOTP generation
-    sample_code = generate_totp(totp)
-    if not sample_code:
-        return jsonify({"ok": False, "msg": "Invalid TOTP Secret Key! Broker ke setup se check karein."})
-
-    try:
-        conn = db.get_conn()
-        cur = conn.cursor()
-        cur.execute("""
-            ALTER TABLE saas_users 
-            ADD COLUMN IF NOT EXISTS broker_name VARCHAR(50) DEFAULT 'DHAN',
-            ADD COLUMN IF NOT EXISTS broker_client_id VARCHAR(50),
-            ADD COLUMN IF NOT EXISTS broker_pin VARCHAR(20),
-            ADD COLUMN IF NOT EXISTS broker_totp_secret VARCHAR(100),
-            ADD COLUMN IF NOT EXISTS broker_access_token TEXT,
-            ADD COLUMN IF NOT EXISTS selected_strategy VARCHAR(50) DEFAULT 'anas_hybrid';
-        """)
-        cur.execute("""
-            UPDATE saas_users 
-            SET broker_name = %s, broker_client_id = %s, broker_pin = %s, broker_totp_secret = %s 
-            WHERE id = %s;
-        """, (broker, cid, pin, totp, uid))
-        conn.commit()
-        conn.close()
-        return jsonify({"ok": True, "msg": f"✅ Broker {broker} connected! TOTP Live Sync Verified ({sample_code}). Ab daily auto-renew rahega!"})
-    except Exception as e:
-        return jsonify({"ok": False, "msg": f"Database error: {str(e)}"})
-
-@saas_bp.route("/api/user/save-strategy", methods=["POST"])
-def api_save_strategy():
-    data = request.get_json() or {}
-    uid = data.get("user_id")
-    strat = data.get("strategy", "anas_hybrid")
-    try:
-        conn = db.get_conn()
-        cur = conn.cursor()
-        cur.execute("UPDATE saas_users SET selected_strategy = %s WHERE id = %s;", (strat, uid))
-        conn.commit()
-        conn.close()
-        return jsonify({"ok": True, "msg": "Strategy updated!"})
-    except Exception as e:
-        return jsonify({"ok": False, "msg": str(e)})
-
-@saas_bp.route("/manifest.json")
-def pwa_manifest():
-    return jsonify({
-        "name": "ANAS AI QUANT",
-        "short_name": "AnasQuant",
-        "start_url": "/",
-        "display": "standalone",
-        "background_color": "#070d19",
-        "theme_color": "#070d19",
-        "icons": [{
-            "src": "https://img.icons8.com/fluency/192/bullish.png",
-            "sizes": "192x192",
-            "type": "image/png"
-        }]
-    })
+@saas_portal_bp.route('/', methods=['GET'])
+@saas_portal_bp.route('/portal', methods=['GET'])
+def render_saas_portal():
+    return render_template_string(PORTAL_HTML)
