@@ -544,3 +544,22 @@ def api_saas_user_trades():
         return jsonify({"ok": True, "total_pnl": round(tot_pnl, 2), "trades": trades})
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Error: {e}"}), 500
+
+
+# === MANUAL BREACH CIRCUIT BREAKER API ===
+@app.route("/api/master/trigger-breach-exit", methods=["POST"])
+def api_master_trigger_breach_exit():
+    pin = request.args.get("pin", "") or (request.get_json(silent=True) or {}).get("pin", "")
+    if pin != "0401":
+        return jsonify({"ok": False, "msg": "Unauthorized"}), 403
+    
+    data = request.get_json(silent=True) or {}
+    uid = data.get("user_id")
+    prices = data.get("current_prices", {})
+    
+    try:
+        import db
+        res = db.emergency_manual_breach_close(user_id=uid, current_prices=prices)
+        return jsonify({"ok": True, "data": res})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Breach trigger error: {e}"}), 500
