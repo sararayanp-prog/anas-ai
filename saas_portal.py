@@ -517,6 +517,9 @@ PORTAL_HTML = """<!DOCTYPE html>
   <!-- Footer -->
   <footer class="border-t border-white/5 py-4 text-center text-xs text-slate-500">
     <div>© 2026 Anas AI Private Quant Desk • Single Device Active Protection</div>
+    <div class="mt-2 text-[10px] text-slate-600 max-w-2xl mx-auto leading-relaxed">
+      ⚖️ <strong>Regulatory Disclaimer:</strong> Anas AI is an algorithmic quantitative technology platform providing rule-based automation. We are not a SEBI-registered Research Analyst or Investment Advisor. All algorithmic trades execute autonomously via user's private broker API. Past historical performance is not indicative of future returns.
+    </div>
   </footer>
 
   <!-- CLIENT-SIDE LOGIC -->

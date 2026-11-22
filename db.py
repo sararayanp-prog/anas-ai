@@ -604,3 +604,24 @@ def emergency_manual_breach_close(user_id=None, current_prices=None):
         "closed_trades_count": len(closed_summary),
         "closed_trades": closed_summary
     }
+
+
+def get_today_consecutive_losses():
+    """Returns consecutive losses from today's closed trades"""
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT pnl_net FROM trades_journal 
+        WHERE status = 'CLOSED' AND DATE(closed_at + INTERVAL '330 minutes') = DATE(NOW() + INTERVAL '330 minutes')
+        ORDER BY id DESC LIMIT 5;
+    """)
+    rows = cur.fetchall()
+    conn.close()
+    
+    consec = 0
+    for r in rows:
+        if float(r[0] or 0.0) < 0:
+            consec += 1
+        else:
+            break
+    return consec

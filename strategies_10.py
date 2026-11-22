@@ -1,3 +1,41 @@
+
+def check_institutional_trade_allowed(now_dt=None, adx_val=25.0, consecutive_losses=0):
+    """
+    INSTITUTIONAL RISK RULES:
+    1. Lunch-Slump Gate (11:15 AM - 1:15 PM): No new entries.
+    2. Chop Filter (ADX < 20): Sideways market protection.
+    3. 2-Consecutive SL Hard Stop: Anti-revenge trading circuit.
+    4. 3:15 PM EOD Cutoff: Prevent broker penalty fees.
+    """
+    from datetime import datetime, time as dt_time
+    import pytz
+    
+    tz = pytz.timezone('Asia/Kolkata')
+    now = now_dt or datetime.now(tz)
+    t = now.time()
+    
+    # Rule 1: Post 3:15 PM Hard Stop
+    if t >= dt_time(15, 15):
+        return False, "MANDATORY_EOD_CUTOFF (After 3:15 PM No Entries)"
+        
+    # Rule 2: Pre-Market / Before 9:20 AM
+    if t < dt_time(9, 20):
+        return False, "PRE_MARKET_BUFFER (Trading opens at 9:20 AM)"
+        
+    # Rule 3: Lunch-Slump Chop Window (11:15 AM - 1:15 PM)
+    if dt_time(11, 15) <= t < dt_time(13, 15):
+        return False, "LUNCH_SLUMP_WINDOW (11:15 AM - 1:15 PM Low Volume Skip)"
+        
+    # Rule 4: Chop Filter (ADX < 20)
+    if adx_val < 20.0:
+        return False, f"CHOP_DAY_FILTER (ADX {round(adx_val,1)} < 20 - Sideways Trap)"
+        
+    # Rule 5: 2 Consecutive Loss Circuit
+    if consecutive_losses >= 2:
+        return False, "2_CONSECUTIVE_SL_HIT (Daily Trading Locked for Capital Safety)"
+        
+    return True, "SYSTEM_CLEAR"
+
 import time
 import math
 from datetime import time as dt_time
